@@ -118,26 +118,12 @@ Current development areas include:
 - Dashboard status reporting
 - Documentation and testing
 
-## Repository Structure
-
-```text
-aura-ai-workflow/
-├── workflows/
-│   └── aura-workflow.json
-├── docs/
-│   ├── architecture.png
-│   └── workflow-screenshots/
-├── README.md
-├── .env.example
-└── .gitignore
-```
-
 ## Importing the Workflow
 
 1. Download or clone this repository.
 2. Open your n8n instance.
 3. Create a workflow and select the option to import from a file.
-4. Import `workflows/aura-workflow.json`.
+4. Import the json files.
 5. Reconnect the required credentials in n8n.
 6. Replace example folder IDs, URLs, and configuration values with values from your environment.
 7. Test each stage with non-sensitive sample data before activating the workflow.
