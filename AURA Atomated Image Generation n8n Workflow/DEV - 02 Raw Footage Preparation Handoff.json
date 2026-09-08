@@ -1,0 +1,264 @@
+{
+  "name": "DEV - 02 Raw Footage Preparation Handoff",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 18
+            }
+          ]
+        }
+      },
+      "id": "2a026d50-3ee1-4be8-a0d0-03eab537fa59",
+      "name": "Check Prepared Raw Footage",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -1104,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "searchMethod": "query",
+        "queryString": "mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+        "returnAll": true,
+        "filter": {
+          "driveId": {
+            "__rl": true,
+            "mode": "list",
+            "value": "My Drive"
+          },
+          "folderId": {
+            "__rl": true,
+            "value": "1FRVcQkQdSWLY1ehdmw8hmatW2LypgKlA",
+            "mode": "id"
+          },
+          "whatToSearch": "folders"
+        },
+        "options": {}
+      },
+      "id": "7418e45d-4e23-48bf-ae37-95338afc84b4",
+      "name": "List Piece Folders in Received",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -880,
+        16
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "IOSFOCyhPN0UvoaU",
+          "name": "Google Drive - Aura"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "b9e9ec18-5aa4-49f2-82fa-aed9059d0aaf",
+      "name": "Check One Piece at a Time",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -656,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "searchMethod": "query",
+        "queryString": "name = 'READY_FOR_REVIEW.docx' and trashed = false",
+        "limit": 1,
+        "filter": {
+          "folderId": {
+            "__rl": true,
+            "value": "={{ $json.id }}",
+            "mode": "id"
+          },
+          "whatToSearch": "files"
+        },
+        "options": {}
+      },
+      "id": "ebc20c4a-8dbe-4d88-b82c-1f401ce33f2e",
+      "name": "Find READY_FOR_REVIEW Marker",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -432,
+        224
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "IOSFOCyhPN0UvoaU",
+          "name": "Google Drive - Aura"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "0dea040c-d7ec-4a47-84b9-5519b6899f97",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "aaa789b7-ead7-48d8-a64a-bcd10c96d94a",
+      "name": "READY_FOR_REVIEW Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -208,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "move",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $('Check One Piece at a Time').item.json.id }}",
+          "mode": "id"
+        },
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "152tqJ3RF3hJ1hxOaqtlVYJC-Z5r_iHZT",
+          "mode": "list",
+          "cachedResultName": "Processed",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/152tqJ3RF3hJ1hxOaqtlVYJC-Z5r_iHZT"
+        }
+      },
+      "id": "f39409ec-e1b6-4d11-996c-3b0a40f82cb3",
+      "name": "Move Piece Folder to Processed",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "IOSFOCyhPN0UvoaU",
+          "name": "Google Drive - Aura"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Check Prepared Raw Footage": {
+      "main": [
+        [
+          {
+            "node": "List Piece Folders in Received",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Piece Folders in Received": {
+      "main": [
+        [
+          {
+            "node": "Check One Piece at a Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check One Piece at a Time": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Find READY_FOR_REVIEW Marker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find READY_FOR_REVIEW Marker": {
+      "main": [
+        [
+          {
+            "node": "READY_FOR_REVIEW Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "READY_FOR_REVIEW Found?": {
+      "main": [
+        [
+          {
+            "node": "Move Piece Folder to Processed",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check One Piece at a Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Move Piece Folder to Processed": {
+      "main": [
+        [
+          {
+            "node": "Check One Piece at a Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "e39cadb4-7294-4d8d-bd7d-a62ec165e0b1",
+  "meta": {
+    "instanceId": "a1e9c521f3d5612adb539a7c99b21eb369c580375c48a00fa5dae3b908ec054b"
+  },
+  "nodeGroups": [],
+  "id": "KX25l3qm4jkyYs1u",
+  "tags": []
+}
