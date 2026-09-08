@@ -1,0 +1,821 @@
+{
+  "name": "DEV - 04 Content Creator Review Dashboard Backend",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "creator-review/pieces",
+        "authentication": "basicAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -160,
+        16
+      ],
+      "id": "aa8622db-9732-4166-9d17-17684f4f4b9b",
+      "name": "Get AI Approved Pieces",
+      "webhookId": "60bd6ea4-ca60-46ff-b325-17dcdb52dd75",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "jA01lVQxdF4hftq6",
+          "name": "AURA Creator Review Login"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "searchMethod": "query",
+        "queryString": "mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+        "returnAll": true,
+        "filter": {
+          "driveId": {
+            "mode": "list",
+            "value": "My Drive"
+          },
+          "folderId": {
+            "__rl": true,
+            "value": "1O-kkEwshBXZ8AYVzPf6N7h0njySVri1V",
+            "mode": "list",
+            "cachedResultName": "AIApproved",
+            "cachedResultUrl": "https://drive.google.com/drive/folders/1O-kkEwshBXZ8AYVzPf6N7h0njySVri1V"
+          },
+          "whatToSearch": "folders"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        32,
+        16
+      ],
+      "id": "779f87a6-1efc-43db-ac9e-a9d1ea3a4bb3",
+      "name": "List Pieces in AIApproved",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "IOSFOCyhPN0UvoaU",
+          "name": "Google Drive - Aura"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        672,
+        0
+      ],
+      "id": "d741a534-6094-4047-915f-3ec72d473faa",
+      "name": "Load One Piece at a Time"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "01aaf1dd-7205-41e2-b482-0b2c1ac84f46",
+              "name": "pieceFolderId",
+              "value": "={{ $json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "8f0f5557-974c-4347-ae86-a65cfcccbcae",
+              "name": "pieceName",
+              "value": "={{ $json.name }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        864,
+        176
+      ],
+      "id": "75652e93-caa1-4bbe-95ea-18f63753d8bd",
+      "name": "Prepare Creator Review Piece"
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "queryString": "04_PRODUCT_IMAGE_OUTPUTS",
+        "limit": 1,
+        "filter": {
+          "driveId": {
+            "mode": "list",
+            "value": "My Drive"
+          },
+          "folderId": {
+            "__rl": true,
+            "value": "{{ $json.pieceFolderId }}",
+            "mode": "id"
+          },
+          "whatToSearch": "folders"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1056,
+        176
+      ],
+      "id": "b9e4d8c4-9487-4d1b-a29f-b811b91725f3",
+      "name": "Find Product Image Outputs Folder",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "IOSFOCyhPN0UvoaU",
+          "name": "Google Drive - Aura"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "searchMethod": "query",
+        "queryString": "mimeType contains 'image/' and trashed = false",
+        "returnAll": true,
+        "filter": {
+          "driveId": {
+            "mode": "list",
+            "value": "My Drive"
+          },
+          "folderId": {
+            "__rl": true,
+            "value": "{{ $json.id }}",
+            "mode": "id"
+          },
+          "whatToSearch": "files"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1264,
+        176
+      ],
+      "id": "130e909c-bb93-488b-bcb7-71c7e525b338",
+      "name": "List Four Product Images",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "IOSFOCyhPN0UvoaU",
+          "name": "Google Drive - Aura"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const piece = $('Prepare Creator Review Piece').first().json;\n\nconst images = $input.all()\n  .map(item => ({\n    id: item.json.id,\n    name: item.json.name,\n    url: `https://drive.google.com/thumbnail?id=${item.json.id}&sz=w1600`,\n  }))\n  .sort((a, b) => a.name.localeCompare(b.name));\n\nreturn [{\n  json: {\n    pieceFolderId: piece.pieceFolderId,\n    pieceName: piece.pieceName,\n    imageCount: images.length,\n    images,\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1456,
+        176
+      ],
+      "id": "c2cf2330-df8a-4d9a-b8ef-882b4df40ee2",
+      "name": "Build Piece Review Record"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { pieces: $input.all().map(item => item.json) } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        896,
+        -96
+      ],
+      "id": "4b92f6b2-1a94-43e2-828a-c1c37f2aeac5",
+      "name": "Return AIApproved Pieces"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a4fd26c3-ecc9-40fb-8fc1-e797b71902a9",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        240,
+        16
+      ],
+      "id": "e142699b-15e8-4630-86e6-12f11846b901",
+      "name": "Any AIApproved Pieces?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"pieces\":[]}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        432,
+        240
+      ],
+      "id": "576c4768-2f28-4660-beac-e4fd9809574a",
+      "name": "Return No AIApproved Pieces"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "creator-review/decision",
+        "authentication": "basicAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -160,
+        784
+      ],
+      "id": "5ff8165c-ac5d-4bd2-b7c3-19f0fa9905b9",
+      "name": "Submit Creator Decision",
+      "webhookId": "0c4cfcce-41b6-4ad8-9efa-4b16bda39b24",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "jA01lVQxdF4hftq6",
+          "name": "AURA Creator Review Login"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "9a27eead-196a-4206-ad53-10dea1577d53",
+              "name": "pieceFolderId",
+              "value": "={{ $json.body.pieceFolderId }}",
+              "type": "string"
+            },
+            {
+              "id": "bdf03f62-1372-40f9-933f-0cf708855d2b",
+              "name": "decision",
+              "value": "={{ $json.body.decision.toLowerCase() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        48,
+        784
+      ],
+      "id": "b8118adb-12b6-49ba-bea5-c47513f84a5e",
+      "name": "Prepare Creator Decision"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.decision }}",
+                    "rightValue": "good",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "078feb4b-f346-4300-ac08-c970d3b84463"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "ae1db21d-f758-48fa-b2e2-46a54fc45114",
+                    "leftValue": "={{ $json.decision }}",
+                    "rightValue": "no_good",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1024,
+        752
+      ],
+      "id": "9dc819a9-7125-4213-b320-9364f4396afc",
+      "name": "Route Creator Decision"
+    },
+    {
+      "parameters": {
+        "operation": "move",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.pieceFolderId }}",
+          "mode": "id"
+        },
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "1LQzu9HFblegSGbDCurmeYZ1OrNJwJp0c",
+          "mode": "list",
+          "cachedResultName": "CreatorApproved",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/1LQzu9HFblegSGbDCurmeYZ1OrNJwJp0c"
+        }
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1376,
+        528
+      ],
+      "id": "1f7b8930-4254-47e6-99ae-89c06adc9436",
+      "name": "Move Piece to CreatorApproved",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "IOSFOCyhPN0UvoaU",
+          "name": "Google Drive - Aura"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "move",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.pieceFolderId }}",
+          "mode": "id"
+        },
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "1d2vIe5wh3ysjuvK0Q4tz0qZ16-HMl1DL",
+          "mode": "list",
+          "cachedResultName": "CreatorRejected",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/1d2vIe5wh3ysjuvK0Q4tz0qZ16-HMl1DL"
+        }
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1376,
+        768
+      ],
+      "id": "e7e61871-dec3-4f59-9753-a9a8b98f972e",
+      "name": "Move Piece to CreatorRejected",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "IOSFOCyhPN0UvoaU",
+          "name": "Google Drive - Aura"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  success: true,\n  decision: \"good\",\n  destination: \"CreatorApproved\",\n  pieceFolderId: $(\"Prepare Creator Decision\").item.json.pieceFolderId\n} }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1648,
+        528
+      ],
+      "id": "1b3b3f4e-a13c-467c-9aa2-2d60564c039b",
+      "name": "Confirm Creator Approval"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  success: true,\n  decision: \"no_good\",\n  destination: \"CreatorRejected\",\n  pieceFolderId: $(\"Prepare Creator Decision\").item.json.pieceFolderId\n} }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1600,
+        768
+      ],
+      "id": "09573242-cb3e-422b-a2f0-aba8af045ffc",
+      "name": "Confirm Creator Rejection"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  success: false,\n  error: \"Invalid decision. Use good or no_good.\"\n} }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1376,
+        992
+      ],
+      "id": "22879335-65ca-46d1-8e21-f301fb41d3d5",
+      "name": "Reject Invalid Decision"
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "searchMethod": "query",
+        "queryString": "mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+        "returnAll": true,
+        "filter": {
+          "driveId": {
+            "mode": "list",
+            "value": "My Drive"
+          },
+          "folderId": {
+            "__rl": true,
+            "value": "1O-kkEwshBXZ8AYVzPf6N7h0njySVri1V",
+            "mode": "list",
+            "cachedResultName": "AIApproved",
+            "cachedResultUrl": "https://drive.google.com/drive/folders/1O-kkEwshBXZ8AYVzPf6N7h0njySVri1V"
+          },
+          "whatToSearch": "folders"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        224,
+        784
+      ],
+      "id": "fbf2b4f5-04e8-41b0-89d2-aab5a19235bc",
+      "name": "Verify Piece Still in AIApproved",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "IOSFOCyhPN0UvoaU",
+          "name": "Google Drive - Aura"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const request = $(\"Prepare Creator Decision\").first().json;\n\nconst folderExists = $input\n  .all()\n  .some(item => item.json.id === request.pieceFolderId);\n\nreturn [{\n  json: {\n    pieceFolderId: request.pieceFolderId,\n    decision: request.decision,\n    folderExists\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        784
+      ],
+      "id": "9dbcdb74-b9f1-41e4-b1d6-308de3116a28",
+      "name": "Validate Submitted Piece"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "128f3363-6b08-45bb-a91c-6abf852b73cc",
+              "leftValue": "={{ $json.folderExists }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        672,
+        784
+      ],
+      "id": "678ff969-655c-42d4-b6da-98ecbd681317",
+      "name": "Piece Still Awaiting Review?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n   success: false,\n  error: \"This piece is no longer awaiting creator review.\"\n} }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1024,
+        1024
+      ],
+      "id": "924df1c2-35a9-4461-b574-a5020e38329a",
+      "name": "Reject Missing or Reviewed Piece"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Get AI Approved Pieces": {
+      "main": [
+        [
+          {
+            "node": "List Pieces in AIApproved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Pieces in AIApproved": {
+      "main": [
+        [
+          {
+            "node": "Any AIApproved Pieces?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load One Piece at a Time": {
+      "main": [
+        [
+          {
+            "node": "Return AIApproved Pieces",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Creator Review Piece",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Creator Review Piece": {
+      "main": [
+        [
+          {
+            "node": "Find Product Image Outputs Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Product Image Outputs Folder": {
+      "main": [
+        [
+          {
+            "node": "List Four Product Images",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Four Product Images": {
+      "main": [
+        [
+          {
+            "node": "Build Piece Review Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Piece Review Record": {
+      "main": [
+        [
+          {
+            "node": "Load One Piece at a Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any AIApproved Pieces?": {
+      "main": [
+        [
+          {
+            "node": "Load One Piece at a Time",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return No AIApproved Pieces",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Submit Creator Decision": {
+      "main": [
+        [
+          {
+            "node": "Prepare Creator Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Creator Decision": {
+      "main": [
+        [
+          {
+            "node": "Verify Piece Still in AIApproved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Creator Decision": {
+      "main": [
+        [
+          {
+            "node": "Move Piece to CreatorApproved",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Move Piece to CreatorRejected",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reject Invalid Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Move Piece to CreatorApproved": {
+      "main": [
+        [
+          {
+            "node": "Confirm Creator Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Move Piece to CreatorRejected": {
+      "main": [
+        [
+          {
+            "node": "Confirm Creator Rejection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Piece Still in AIApproved": {
+      "main": [
+        [
+          {
+            "node": "Validate Submitted Piece",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Submitted Piece": {
+      "main": [
+        [
+          {
+            "node": "Piece Still Awaiting Review?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Piece Still Awaiting Review?": {
+      "main": [
+        [
+          {
+            "node": "Route Creator Decision",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reject Missing or Reviewed Piece",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "798ce535-316d-4ee4-b5d9-0008253b95dc",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a1e9c521f3d5612adb539a7c99b21eb369c580375c48a00fa5dae3b908ec054b"
+  },
+  "nodeGroups": [],
+  "id": "Sb72iTdxhvD0WdpX",
+  "tags": []
+}
