@@ -128,16 +128,6 @@ Current development areas include:
 6. Replace example folder IDs, URLs, and configuration values with values from your environment.
 7. Test each stage with non-sensitive sample data before activating the workflow.
 
-## Security and Privacy
-
-This repository should not contain production credentials or private client data.
-
-- API keys and passwords must be configured through n8n credentials.
-- The real `.env` file must not be committed.
-- `.env.example` should contain variable names and placeholder values only.
-- Production webhook URLs, Google Drive IDs, email addresses, and customer files should be removed or replaced with examples.
-- Exported workflow JSON files should be reviewed before every public commit.
-
 ## Planned Improvements
 
 - Complete end-to-end workflow testing
