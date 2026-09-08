@@ -1,6 +1,6 @@
 # AURA AI Product Content Workflow
 
-An in-progress n8n automation project for organizing product photography, coordinating AI-assisted content generation, validating outputs, and routing assets through human review.
+An in-progress automation project for organizing product photography, coordinating AI-assisted content generation, validating outputs, and routing assets through human review.
 
 > **Project status:** Work in progress. The workflow architecture and core automation stages are being developed and refined. It is not yet intended for production use.
 
@@ -8,7 +8,31 @@ An in-progress n8n automation project for organizing product photography, coordi
 
 The AURA workflow is designed to reduce the manual work involved in receiving product photographs, organizing assets, generating product content, reviewing AI outputs, and tracking the status of each product.
 
-n8n acts as the orchestration layer between file intake, JavaScript processing, Google Drive, OpenAI-powered generation and validation, human review, and dashboard reporting.
+n8n acts as the orchestration layer between file intake, JavaScript processing, Google Drive, OpenAI-powered generation and validation, and human review. A dedicated web dashboard lets the content creator review AI-approved image sets and submit a Good or No Good decision.
+
+## Repository Structure
+
+```text
+.
+├── AURA Atomated Image Generation n8n Workflow/
+│   ├── DEV - 01 WeTransfer Intake.json
+│   ├── DEV - 02 Raw Footage Preparation Handoff.json
+│   ├── DEV - 03 Manual Review Routing.json
+│   ├── DEV - 04 Content Creator Review Dashboard Backend.json
+│   └── Initialize Aura Drive Structure.json
+├── Architecture & Design/
+│   └── workflow architecture documents
+├── content-creator-review-website/
+│   ├── app/
+│   ├── public/
+│   ├── package.json
+│   └── README.md
+└── README.md
+```
+
+- **n8n workflows:** importable workflow definitions and the Drive initialization workflow.
+- **Architecture & Design:** supporting process-flow documentation.
+- **Content creator website:** the complete dashboard source, API routes, styling, configuration, and deployment manifest.
 
 ## Problem
 
@@ -54,7 +78,7 @@ flowchart TD
     P -->|Approved| Q[Approved deliverables]
     P -->|Rejected| M
 
-    F --> R[Retool status dashboard]
+    F --> R[Content creator review dashboard]
     K --> R
     N --> R
     P --> R
@@ -82,9 +106,9 @@ Generated outputs pass through validation steps before human review. These check
 
 The workflow includes approval and rejection stages for content creators and designers. Rejected outputs return to a revision path instead of being treated as completed work.
 
-### 6 Status Tracking
+### 6 Content Creator Dashboard
 
-A Retool dashboard is planned to summarize how many products are received, processed, approved, rejected, or waiting for review.
+The content creator dashboard loads pieces from `Content/AIApproved`, displays the four accepted product images, and sends the creator's Good or No Good decision to n8n. n8n then moves the complete piece folder to the appropriate creator-approved or creator-rejected destination.
 
 ## Technologies
 
@@ -92,7 +116,7 @@ A Retool dashboard is planned to summarize how many products are received, proce
 - **JavaScript** for link, page, and file processing
 - **OpenAI tools** for AI-assisted image and content workflows
 - **Google Drive** for structured asset storage
-- **Retool** for workflow monitoring and review status
+- **Next.js/vinext** for the content creator review website
 - **Email and WeTransfer** for project intake
 
 ## Project Goals
@@ -123,10 +147,29 @@ Current development areas include:
 1. Download or clone this repository.
 2. Open your n8n instance.
 3. Create a workflow and select the option to import from a file.
-4. Import the json files.
+4. Import the JSON files from `AURA Atomated Image Generation n8n Workflow/`.
 5. Reconnect the required credentials in n8n.
 6. Replace example folder IDs, URLs, and configuration values with values from your environment.
 7. Test each stage with non-sensitive sample data before activating the workflow.
+
+## Content Creator Website
+
+The full website source is in `content-creator-review-website/`. Its local and hosted runtime requires these environment variables:
+
+```text
+N8N_PIECES_URL
+N8N_DECISION_URL
+N8N_BASIC_USERNAME
+N8N_BASIC_PASSWORD
+```
+
+Values belong in a local `.env.local` file or the hosting provider's secret configuration. They must never be committed to GitHub.
+
+```bash
+cd content-creator-review-website
+npm install
+npm run dev
+```
 
 ## Planned Improvements
 
@@ -135,13 +178,12 @@ Current development areas include:
 - Add clearer execution logging
 - Validate duplicate and incomplete file submissions
 - Expand automated quality checks
-- Complete the Retool monitoring dashboard
+- Complete end-to-end creator dashboard testing
 - Add sanitized workflow screenshots and test examples
 - Document deployment and maintenance procedures
 
 ## Author
 
 **Karim Khalil**
-
 
 
