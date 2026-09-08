@@ -1,0 +1,409 @@
+{
+  "name": "DEV - 03 Manual Review Routing",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 18,
+              "triggerAtMinute": 30
+            }
+          ]
+        }
+      },
+      "id": "e0f3cac9-68c4-4402-a8b3-acadc9ec696a",
+      "name": "Check Prepared Raw Footage",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -1104,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "2ea82d50-1f61-4834-b087-ba3640ae7dc0",
+      "name": "Check One Piece at a Time",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -656,
+        16
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "searchMethod": "query",
+        "queryString": "mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+        "returnAll": true,
+        "filter": {
+          "driveId": {
+            "__rl": true,
+            "mode": "list",
+            "value": "My Drive"
+          },
+          "folderId": {
+            "__rl": true,
+            "value": "152tqJ3RF3hJ1hxOaqtlVYJC-Z5r_iHZT",
+            "mode": "list",
+            "cachedResultName": "Processed",
+            "cachedResultUrl": "https://drive.google.com/drive/folders/152tqJ3RF3hJ1hxOaqtlVYJC-Z5r_iHZT"
+          },
+          "whatToSearch": "folders"
+        },
+        "options": {}
+      },
+      "id": "ba180e82-9f08-42f8-a087-3e1bf083c51e",
+      "name": "List Piece Folders in Processed",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -880,
+        16
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "IOSFOCyhPN0UvoaU",
+          "name": "Google Drive - Aura"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "searchMethod": "query",
+        "queryString": "name = 'REJECTED.docx' and trashed = false",
+        "limit": 1,
+        "filter": {
+          "folderId": {
+            "__rl": true,
+            "value": "={{ $json.id }}",
+            "mode": "id"
+          },
+          "whatToSearch": "files"
+        },
+        "options": {}
+      },
+      "id": "370f67f2-00e7-4158-94eb-7b0ee477aa8b",
+      "name": "Find REJECTED Marker",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -432,
+        224
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "IOSFOCyhPN0UvoaU",
+          "name": "Google Drive - Aura"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "0dea040c-d7ec-4a47-84b9-5519b6899f97",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "de96613f-1ca4-4af5-ac56-5ceb9b2c10dc",
+      "name": "REJECTED Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -208,
+        224
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "move",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $('Check One Piece at a Time').item.json.id }}",
+          "mode": "id"
+        },
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "1761FZr7rHV863k_DDyqTfKpxwQanzmVa",
+          "mode": "list",
+          "cachedResultName": "Rejected",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/1761FZr7rHV863k_DDyqTfKpxwQanzmVa"
+        }
+      },
+      "id": "566f5b37-7d48-4e1f-8548-beca0369865e",
+      "name": "Move Piece Folder to Rejected",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        0,
+        0
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "IOSFOCyhPN0UvoaU",
+          "name": "Google Drive - Aura"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "searchMethod": "query",
+        "queryString": "name = 'READY_FOR_AURA.docx' and trashed = false",
+        "limit": 1,
+        "filter": {
+          "folderId": {
+            "__rl": true,
+            "value": "={{ $('Check One Piece at a Time').item.json.id }}",
+            "mode": "id"
+          },
+          "whatToSearch": "files"
+        },
+        "options": {}
+      },
+      "id": "cf39e597-823e-4ced-9653-707496683a12",
+      "name": "Find READY_FOR_AURA Marker",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        16,
+        320
+      ],
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "IOSFOCyhPN0UvoaU",
+          "name": "Google Drive - Aura"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "98c7f183-0d02-4a8d-8d0c-93d31d468987",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "097d6f30-5d38-48a8-a43f-735673c2b566",
+      "name": "READY_FOR_AURA Found?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        240,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "move",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $('Check One Piece at a Time').item.json.id }}",
+          "mode": "id"
+        },
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "1gKuevsxdyiQBht8ymh_bHTK0MYlSZfLD",
+          "mode": "list",
+          "cachedResultName": "Approved",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/1gKuevsxdyiQBht8ymh_bHTK0MYlSZfLD"
+        }
+      },
+      "id": "4b049081-ac43-4b36-9be2-5765fe01f339",
+      "name": "Move Piece Folder to Approved",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        688,
+        320
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "IOSFOCyhPN0UvoaU",
+          "name": "Google Drive - Aura"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Check Prepared Raw Footage": {
+      "main": [
+        [
+          {
+            "node": "List Piece Folders in Processed",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check One Piece at a Time": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Find REJECTED Marker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Piece Folders in Processed": {
+      "main": [
+        [
+          {
+            "node": "Check One Piece at a Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find REJECTED Marker": {
+      "main": [
+        [
+          {
+            "node": "REJECTED Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "REJECTED Found?": {
+      "main": [
+        [
+          {
+            "node": "Move Piece Folder to Rejected",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Find READY_FOR_AURA Marker",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Move Piece Folder to Rejected": {
+      "main": [
+        [
+          {
+            "node": "Check One Piece at a Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find READY_FOR_AURA Marker": {
+      "main": [
+        [
+          {
+            "node": "READY_FOR_AURA Found?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "READY_FOR_AURA Found?": {
+      "main": [
+        [
+          {
+            "node": "Move Piece Folder to Approved",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Check One Piece at a Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Move Piece Folder to Approved": {
+      "main": [
+        [
+          {
+            "node": "Check One Piece at a Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "0d770e11-b25c-4ce2-9b83-977ffd7f0bb3",
+  "meta": {
+    "instanceId": "a1e9c521f3d5612adb539a7c99b21eb369c580375c48a00fa5dae3b908ec054b"
+  },
+  "nodeGroups": [],
+  "id": "2WUoOatS0AoUa3u3",
+  "tags": []
+}
