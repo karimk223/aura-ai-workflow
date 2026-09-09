@@ -34,14 +34,9 @@ flowchart TD
     D --> E[Google Drive raw asset storage]
     E --> F[n8n workflow orchestration]
 
-    F --> G[AI-assisted product image generation]
-    F --> H[AI-assisted content generation]
-
-    G --> I[Automated image validation]
-    H --> J[Automated content validation]
-
+    F --> G[Scheduled AURA image generation skill]
+    G --> I[Scheduled AURA image review skill]
     I --> K{AI review result}
-    J --> K
 
     K -->|Approved| L[Content creator review]
     K -->|Rejected| M[Revision queue]
@@ -54,7 +49,7 @@ flowchart TD
     P -->|Approved| Q[Approved deliverables]
     P -->|Rejected| M
 
-    F --> R[Retool status dashboard]
+    F --> R[AURA operations dashboard]
     K --> R
     N --> R
     P --> R
@@ -72,7 +67,7 @@ JavaScript steps inspect and organize the incoming files. Raw assets are stored 
 
 ### 3 AI Assisted Generation
 
-The workflow coordinates AI-assisted product image and content generation. Reference photographs and product information are treated as the source material for each generation task.
+Scheduled ChatGPT skills work directly from each prepared piece in `RawFootage/Approved`. Accepted images are stored in the piece's `04_PRODUCT_IMAGE_OUTPUTS` folder. The complete piece then moves to `Content/AIApproved`; rejected candidates and failed attempts are retained under the piece's `_run` folder in `Content/AIRejected`.
 
 ### 4 Automated Validation
 
@@ -84,7 +79,7 @@ The workflow includes approval and rejection stages for content creators and des
 
 ### 6 Status Tracking
 
-A Retool dashboard is planned to summarize how many products are received, processed, approved, rejected, or waiting for review.
+The private AURA operations dashboard summarizes every current Raw Footage and Content stage, supports search and stage filtering, and links each piece back to Google Drive.
 
 ## Technologies
 
@@ -92,7 +87,7 @@ A Retool dashboard is planned to summarize how many products are received, proce
 - **JavaScript** for link, page, and file processing
 - **OpenAI tools** for AI-assisted image and content workflows
 - **Google Drive** for structured asset storage
-- **Retool** for workflow monitoring and review status
+- **OpenAI Sites** for the creator, designer, and operations dashboards
 - **Email and WeTransfer** for project intake
 
 ## Project Goals
@@ -135,13 +130,12 @@ Current development areas include:
 - Add clearer execution logging
 - Validate duplicate and incomplete file submissions
 - Expand automated quality checks
-- Complete the Retool monitoring dashboard
+- Connect and validate the final operations dashboard webhook
 - Add sanitized workflow screenshots and test examples
 - Document deployment and maintenance procedures
 
 ## Author
 
 **Karim Khalil**
-
 
 

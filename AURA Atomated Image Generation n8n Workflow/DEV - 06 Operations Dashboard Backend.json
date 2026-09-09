@@ -1,0 +1,134 @@
+{
+  "name": "DEV - 06 Operations Dashboard Backend",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "aura-dashboard/stats",
+        "authentication": "basicAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -320,
+        0
+      ],
+      "id": "0d7c7c0e-22ef-4cc8-bf86-3feac8ae3d93",
+      "name": "Get Operations Dashboard Stats",
+      "webhookId": "55c12e44-73e8-4cde-b122-bcf2dd60f676",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "jA01lVQxdF4hftq6",
+          "name": "AURA Creator Review Login"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "searchMethod": "query",
+        "queryString": "mimeType = 'application/vnd.google-apps.folder' and trashed = false and ('1FRVcQkQdSWLY1ehdmw8hmatW2LypgKlA' in parents or '152tqJ3RF3hJ1hxOaqtlVYJC-Z5r_iHZT' in parents or '1gKuevsxdyiQBht8ymh_bHTK0MYlSZfLD' in parents or '1761FZr7rHV863k_DDyqTfKpxwQanzmVa' in parents or '1O-kkEwshBXZ8AYVzPf6N7h0njySVri1V' in parents or '1d_koVEkklZh6DW9VzncvF8OfvOFAs3zU' in parents or '1LQzu9HFblegSGbDCurmeYZ1OrNJwJp0c' in parents or '1d2vIe5wh3ysjuvK0Q4tz0qZ16-HMl1DL' in parents or '1ivqifcaL0vr5nyLXn2P09yBGo2lqfUdQ' in parents or '14atX2ZW0zgz0yb2aV2OS4eMIgehG9CqP' in parents)",
+        "returnAll": true,
+        "filter": {
+          "driveId": {
+            "mode": "list",
+            "value": "My Drive"
+          },
+          "whatToSearch": "folders"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        -64,
+        0
+      ],
+      "id": "4f8ba868-04d6-433b-8a1f-29ea401d6e55",
+      "name": "List Pipeline Piece Folders",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "IOSFOCyhPN0UvoaU",
+          "name": "Google Drive - Aura"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const stages = [\n  { key: 'received', area: 'raw', parentId: '1FRVcQkQdSWLY1ehdmw8hmatW2LypgKlA' },\n  { key: 'processed', area: 'raw', parentId: '152tqJ3RF3hJ1hxOaqtlVYJC-Z5r_iHZT' },\n  { key: 'approved', area: 'raw', parentId: '1gKuevsxdyiQBht8ymh_bHTK0MYlSZfLD' },\n  { key: 'rejected', area: 'raw', parentId: '1761FZr7rHV863k_DDyqTfKpxwQanzmVa' },\n  { key: 'aiApproved', area: 'content', parentId: '1O-kkEwshBXZ8AYVzPf6N7h0njySVri1V' },\n  { key: 'aiRejected', area: 'content', parentId: '1d_koVEkklZh6DW9VzncvF8OfvOFAs3zU' },\n  { key: 'creatorApproved', area: 'content', parentId: '1LQzu9HFblegSGbDCurmeYZ1OrNJwJp0c' },\n  { key: 'creatorRejected', area: 'content', parentId: '1d2vIe5wh3ysjuvK0Q4tz0qZ16-HMl1DL' },\n  { key: 'designerApproved', area: 'content', parentId: '1ivqifcaL0vr5nyLXn2P09yBGo2lqfUdQ' },\n  { key: 'designerRejected', area: 'content', parentId: '14atX2ZW0zgz0yb2aV2OS4eMIgehG9CqP' },\n];\n\nconst stageByParent = new Map(stages.map(stage => [stage.parentId, stage]));\nconst counts = Object.fromEntries(stages.map(stage => [stage.key, 0]));\nconst pieces = [];\n\nfor (const item of $input.all()) {\n  const row = item.json;\n  if (!row.id || !row.name) continue;\n\n  const parents = Array.isArray(row.parents) ? row.parents : [];\n  const stage = parents.map(parentId => stageByParent.get(parentId)).find(Boolean);\n  if (!stage) continue;\n\n  counts[stage.key] += 1;\n  pieces.push({\n    id: row.id,\n    name: row.name,\n    area: stage.area,\n    stage: stage.key,\n    updatedAt: row.modifiedTime ?? row.createdTime ?? null,\n    driveUrl: row.webViewLink ?? `https://drive.google.com/drive/folders/${row.id}`,\n  });\n}\n\npieces.sort((a, b) => a.name.localeCompare(b.name));\n\nreturn [{\n  json: {\n    generatedAt: new Date().toISOString(),\n    counts,\n    pieces,\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        208,
+        0
+      ],
+      "id": "c92a6d9c-59a2-4cf3-85c1-ddc45a8fe24d",
+      "name": "Build Operations Dashboard Data"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        480,
+        0
+      ],
+      "id": "5abeedee-a23d-4222-9224-8f2e2367b51c",
+      "name": "Return Operations Dashboard Stats"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Get Operations Dashboard Stats": {
+      "main": [
+        [
+          {
+            "node": "List Pipeline Piece Folders",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Pipeline Piece Folders": {
+      "main": [
+        [
+          {
+            "node": "Build Operations Dashboard Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Operations Dashboard Data": {
+      "main": [
+        [
+          {
+            "node": "Return Operations Dashboard Stats",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "b4ea6cdf-f3b4-44ee-a5e5-d4ef37c0680d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a1e9c521f3d5612adb539a7c99b21eb369c580375c48a00fa5dae3b908ec054b"
+  },
+  "tags": []
+}
