@@ -40,9 +40,7 @@ button { font: inherit; }
 .brand-logo {
   display: block;
   height: 54px;
-  mix-blend-mode: multiply;
-  object-fit: cover;
-  object-position: center 53%;
+  object-fit: contain;
   width: 142px;
 }
 .brand-section {
