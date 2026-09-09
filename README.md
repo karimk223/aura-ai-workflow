@@ -19,37 +19,9 @@ The system combines n8n orchestration, structured Google Drive folders, schedule
 
 ## End-to-end flow
 
-```mermaid
-flowchart LR
-    A[Trusted email and WeTransfer] --> B[RawFootage / Received]
-    B -->|READY_FOR_REVIEW.docx| C[RawFootage / Processed]
-    C -->|READY_FOR_AURA.docx| D[RawFootage / Approved]
-    C -->|REJECTED marker| E[RawFootage / Rejected]
+![AURA end-to-end product content workflow](Architecture%20%26%20Design/aura-end-to-end-process-flow.png)
 
-    D --> F[Scheduled AI generation]
-    F --> G[Scheduled AI review]
-    G -->|Pass| H[Content / AIApproved]
-    G -->|Rejected candidates or failed attempts| I[Content / AIRejected]
-
-    H --> J[Content creator review site]
-    J -->|Good| K[Content / CreatorApproved]
-    J -->|No Good| L[Content / CreatorRejected]
-
-    K --> M[Designer review site]
-    M -->|Good| N[Content / DesignerApproved]
-    M -->|No Good| O[Content / DesignerRejected]
-
-    B -. live state .-> P[Operations dashboard]
-    C -. live state .-> P
-    D -. live state .-> P
-    E -. live state .-> P
-    H -. live state .-> P
-    I -. live state .-> P
-    K -. live state .-> P
-    L -. live state .-> P
-    N -. live state .-> P
-    O -. live state .-> P
-```
+The diagram follows the complete journey from manual raw-footage upload and WeTransfer intake through preparation, AI generation and validation, content-creator review, designer review, final routing, and dashboard reporting. [Open the original full-resolution process flow (PDF)](Architecture%20%26%20Design/NEWEST%20-%20%20Investigative%20AI%20Process%20Flow%20-%20ExampleWorkflow%20.pdf).
 
 ## Pipeline stages
 
