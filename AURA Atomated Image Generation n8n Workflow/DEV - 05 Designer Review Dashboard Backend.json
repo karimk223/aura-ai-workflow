@@ -1,0 +1,821 @@
+{
+  "name": "DEV - 05 Designer Review Dashboard Backend",
+  "nodes": [
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        672,
+        0
+      ],
+      "id": "f9e2e486-adba-4845-8ef8-dbab3ad69e30",
+      "name": "Load One Piece at a Time"
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "queryString": "04_PRODUCT_IMAGE_OUTPUTS",
+        "limit": 1,
+        "filter": {
+          "driveId": {
+            "mode": "list",
+            "value": "My Drive"
+          },
+          "folderId": {
+            "__rl": true,
+            "value": "={{ $('Prepare Designer Review Piece').item.json.pieceFolderId }}",
+            "mode": "id"
+          },
+          "whatToSearch": "folders"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1056,
+        176
+      ],
+      "id": "89c930ca-4ffa-4052-8f13-0502a486d473",
+      "name": "Find Product Image Outputs Folder",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "IOSFOCyhPN0UvoaU",
+          "name": "Google Drive - Aura"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "searchMethod": "query",
+        "queryString": "mimeType contains 'image/' and trashed = false",
+        "returnAll": true,
+        "filter": {
+          "driveId": {
+            "mode": "list",
+            "value": "My Drive"
+          },
+          "folderId": {
+            "__rl": true,
+            "value": "={{ $('Find Product Image Outputs Folder').item.json.id }}",
+            "mode": "id"
+          },
+          "whatToSearch": "files"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1264,
+        176
+      ],
+      "id": "19361619-45b3-49ce-b19d-2d2c5b689009",
+      "name": "List Four Product Images",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "IOSFOCyhPN0UvoaU",
+          "name": "Google Drive - Aura"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const piece = $('Prepare Designer Review Piece').first().json;\n\nconst images = $input.all()\n  .map(item => ({\n    id: item.json.id,\n    name: item.json.name,\n    url: `https://drive.google.com/thumbnail?id=${item.json.id}&sz=w1600`,\n  }))\n  .sort((a, b) => a.name.localeCompare(b.name));\n\nreturn [{\n  json: {\n    pieceFolderId: piece.pieceFolderId,\n    pieceName: piece.pieceName,\n    imageCount: images.length,\n    images,\n  },\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1456,
+        176
+      ],
+      "id": "0af0c9ad-4d76-4214-bbbf-ff74fc90a9dc",
+      "name": "Build Piece Review Record"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  success: false,\n  error: \"Invalid decision. Use good or no_good.\"\n} }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1376,
+        992
+      ],
+      "id": "2b15bbec-670d-4315-b85f-f9ea47836f26",
+      "name": "Reject Invalid Decision"
+    },
+    {
+      "parameters": {
+        "jsCode": "const request = $(\"Prepare Designer Decision\").first().json;\n\nconst folderExists = $input\n  .all()\n  .some(item => item.json.id === request.pieceFolderId);\n\nreturn [{\n  json: {\n    pieceFolderId: request.pieceFolderId,\n    decision: request.decision,\n    folderExists\n  }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        448,
+        784
+      ],
+      "id": "c392950a-bfde-49d7-9a42-26ab758343a7",
+      "name": "Validate Submitted Piece"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "128f3363-6b08-45bb-a91c-6abf852b73cc",
+              "leftValue": "={{ $json.folderExists }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        672,
+        784
+      ],
+      "id": "95760e24-3b02-4d41-892e-477d2c9e39d5",
+      "name": "Piece Still Awaiting Review?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  success: false,\n  error: \"This piece is no longer awaiting designer review.\"\n} }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1024,
+        1024
+      ],
+      "id": "956d090b-24fe-4c35-919e-32b2d893bc08",
+      "name": "Reject Missing or Reviewed Piece"
+    },
+    {
+      "parameters": {
+        "path": "designer-review/pieces",
+        "authentication": "basicAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -160,
+        16
+      ],
+      "id": "9af7e7ac-f5d0-476c-84ff-03da4a4b1958",
+      "name": "Get Designer Review Pieces",
+      "webhookId": "23d4e5c8-e86d-462a-a08c-3ea188884e39",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "EmJve8yZ9bmQsjYS",
+          "name": "AURA Designer Review Login"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "searchMethod": "query",
+        "queryString": "mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+        "returnAll": true,
+        "filter": {
+          "driveId": {
+            "mode": "list",
+            "value": "My Drive"
+          },
+          "folderId": {
+            "__rl": true,
+            "value": "1LQzu9HFblegSGbDCurmeYZ1OrNJwJp0c",
+            "mode": "list",
+            "cachedResultName": "CreatorApproved",
+            "cachedResultUrl": "https://drive.google.com/drive/folders/1LQzu9HFblegSGbDCurmeYZ1OrNJwJp0c"
+          },
+          "whatToSearch": "folders"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        32,
+        16
+      ],
+      "id": "c60e7756-1ec4-4ed6-acc5-7f13365c3c1a",
+      "name": "List Pieces in CreatorApproved",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "IOSFOCyhPN0UvoaU",
+          "name": "Google Drive - Aura"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "a4fd26c3-ecc9-40fb-8fc1-e797b71902a9",
+              "leftValue": "={{ $json.id }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        240,
+        16
+      ],
+      "id": "d00317ad-1196-4279-81ad-a404c40bee53",
+      "name": "Any CreatorApproved Pieces?"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\"pieces\":[]}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        432,
+        240
+      ],
+      "id": "e0e7b2f4-d373-491a-b3a2-bef4ea820aee",
+      "name": "Return No CreatorApproved Pieces"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "01aaf1dd-7205-41e2-b482-0b2c1ac84f46",
+              "name": "pieceFolderId",
+              "value": "={{ $json.id }}",
+              "type": "string"
+            },
+            {
+              "id": "8f0f5557-974c-4347-ae86-a65cfcccbcae",
+              "name": "pieceName",
+              "value": "={{ $json.name }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        864,
+        176
+      ],
+      "id": "59a7f951-5a0f-44c2-b4f8-ba71826ce5fc",
+      "name": "Prepare Designer Review Piece"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { pieces: $input.all().map(item => item.json) } }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        896,
+        -96
+      ],
+      "id": "6075227b-9f3b-4fb1-9934-c144144750ac",
+      "name": "Return CreatorApproved Pieces"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "designer-review/decision",
+        "authentication": "basicAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -160,
+        784
+      ],
+      "id": "c5fcf7e9-8140-4e6e-a1db-0b9c2f609ccc",
+      "name": "Submit Designer Decision",
+      "webhookId": "e96bea0a-4ac1-420e-b4bc-bcb9c2e6d21c",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "EmJve8yZ9bmQsjYS",
+          "name": "AURA Designer Review Login"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "9a27eead-196a-4206-ad53-10dea1577d53",
+              "name": "pieceFolderId",
+              "value": "={{ $json.body.pieceFolderId }}",
+              "type": "string"
+            },
+            {
+              "id": "bdf03f62-1372-40f9-933f-0cf708855d2b",
+              "name": "decision",
+              "value": "={{ $json.body.decision.toLowerCase() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        48,
+        784
+      ],
+      "id": "47fa2c1b-fa1c-4f1c-905c-364456d5b53a",
+      "name": "Prepare Designer Decision"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.decision }}",
+                    "rightValue": "good",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "078feb4b-f346-4300-ac08-c970d3b84463"
+                  }
+                ],
+                "combinator": "and"
+              }
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "ae1db21d-f758-48fa-b2e2-46a54fc45114",
+                    "leftValue": "={{ $json.decision }}",
+                    "rightValue": "no_good",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              }
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        1024,
+        752
+      ],
+      "id": "5dd46de8-d1f8-41ba-a752-f6516f17b490",
+      "name": "Route Designer Decision"
+    },
+    {
+      "parameters": {
+        "operation": "move",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.pieceFolderId }}",
+          "mode": "id"
+        },
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "1ivqifcaL0vr5nyLXn2P09yBGo2lqfUdQ",
+          "mode": "list",
+          "cachedResultName": "DesignerApproved",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/1ivqifcaL0vr5nyLXn2P09yBGo2lqfUdQ"
+        }
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1376,
+        528
+      ],
+      "id": "452c7875-7dfa-43df-b5c5-2d309091e277",
+      "name": "Move Piece to DesignerApproved",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "IOSFOCyhPN0UvoaU",
+          "name": "Google Drive - Aura"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "move",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.pieceFolderId }}",
+          "mode": "id"
+        },
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "14atX2ZW0zgz0yb2aV2OS4eMIgehG9CqP",
+          "mode": "list",
+          "cachedResultName": "DesignerRejected",
+          "cachedResultUrl": "https://drive.google.com/drive/folders/14atX2ZW0zgz0yb2aV2OS4eMIgehG9CqP"
+        }
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        1376,
+        768
+      ],
+      "id": "05d6f496-2429-4e62-a4b1-bd4d4de4b951",
+      "name": "Move Piece to DesignerRejected",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "IOSFOCyhPN0UvoaU",
+          "name": "Google Drive - Aura"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "resource": "fileFolder",
+        "searchMethod": "query",
+        "queryString": "mimeType = 'application/vnd.google-apps.folder' and trashed = false",
+        "returnAll": true,
+        "filter": {
+          "driveId": {
+            "mode": "list",
+            "value": "My Drive"
+          },
+          "folderId": {
+            "__rl": true,
+            "value": "1LQzu9HFblegSGbDCurmeYZ1OrNJwJp0c",
+            "mode": "list",
+            "cachedResultName": "CreatorApproved",
+            "cachedResultUrl": "https://drive.google.com/drive/folders/1LQzu9HFblegSGbDCurmeYZ1OrNJwJp0c"
+          },
+          "whatToSearch": "folders"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        224,
+        784
+      ],
+      "id": "bc449fe3-a59a-4a91-83ea-3fab4544d07a",
+      "name": "Verify Piece Still in CreatorApproved",
+      "alwaysOutputData": true,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "IOSFOCyhPN0UvoaU",
+          "name": "Google Drive - Aura"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  success: true,\n  decision: \"good\",\n  destination: \"DesignerApproved\",\n  pieceFolderId: $(\"Prepare Designer Decision\").item.json.pieceFolderId\n} }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1648,
+        528
+      ],
+      "id": "1880d366-c23e-47b7-8a8b-002aaacfe5c4",
+      "name": "Confirm Designer Approval"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ {\n  success: true,\n  decision: \"no_good\",\n  destination: \"DesignerRejected\",\n  pieceFolderId: $(\"Prepare Designer Decision\").item.json.pieceFolderId\n} }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1600,
+        768
+      ],
+      "id": "38c32c18-3724-4e15-b337-d85942c68ffe",
+      "name": "Confirm Designer Rejection"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Load One Piece at a Time": {
+      "main": [
+        [
+          {
+            "node": "Return CreatorApproved Pieces",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Designer Review Piece",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Product Image Outputs Folder": {
+      "main": [
+        [
+          {
+            "node": "List Four Product Images",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Four Product Images": {
+      "main": [
+        [
+          {
+            "node": "Build Piece Review Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Piece Review Record": {
+      "main": [
+        [
+          {
+            "node": "Load One Piece at a Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Submitted Piece": {
+      "main": [
+        [
+          {
+            "node": "Piece Still Awaiting Review?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Piece Still Awaiting Review?": {
+      "main": [
+        [
+          {
+            "node": "Route Designer Decision",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reject Missing or Reviewed Piece",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Designer Review Pieces": {
+      "main": [
+        [
+          {
+            "node": "List Pieces in CreatorApproved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "List Pieces in CreatorApproved": {
+      "main": [
+        [
+          {
+            "node": "Any CreatorApproved Pieces?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Any CreatorApproved Pieces?": {
+      "main": [
+        [
+          {
+            "node": "Load One Piece at a Time",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return No CreatorApproved Pieces",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Designer Review Piece": {
+      "main": [
+        [
+          {
+            "node": "Find Product Image Outputs Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Submit Designer Decision": {
+      "main": [
+        [
+          {
+            "node": "Prepare Designer Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Designer Decision": {
+      "main": [
+        [
+          {
+            "node": "Verify Piece Still in CreatorApproved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Designer Decision": {
+      "main": [
+        [
+          {
+            "node": "Move Piece to DesignerApproved",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Move Piece to DesignerRejected",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reject Invalid Decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Move Piece to DesignerApproved": {
+      "main": [
+        [
+          {
+            "node": "Confirm Designer Approval",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Move Piece to DesignerRejected": {
+      "main": [
+        [
+          {
+            "node": "Confirm Designer Rejection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Piece Still in CreatorApproved": {
+      "main": [
+        [
+          {
+            "node": "Validate Submitted Piece",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "7dc825a0-d5fa-4d69-8163-6eb54e9c19cc",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "a1e9c521f3d5612adb539a7c99b21eb369c580375c48a00fa5dae3b908ec054b"
+  },
+  "nodeGroups": [],
+  "id": "1eERcyjL5FcjRGvO",
+  "tags": []
+}
