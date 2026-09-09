@@ -99,11 +99,8 @@ export default function ReviewDashboard({
     <main className="site-shell">
       <header className="topbar">
         <a className="brand" href="#top" aria-label="AURA designer review home">
-          <span className="brand-mark">A</span>
-          <span>
-            <strong>AURA</strong>
-            <small>Designer Review</small>
-          </span>
+          <img className="brand-logo" src="/aura-logo.png" alt="AURA by Nada" />
+          <span className="brand-section">Designer Review</span>
         </a>
         <div className="reviewer-chip">
           <span className="status-dot" />

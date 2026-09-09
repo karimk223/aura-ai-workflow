@@ -36,21 +36,24 @@ button { font: inherit; }
   top: 0;
   z-index: 20;
 }
-.brand { align-items: center; color: inherit; display: flex; gap: 12px; text-decoration: none; }
-.brand-mark {
-  align-items: center;
-  background: var(--ink);
-  border-radius: 50%;
-  color: white;
-  display: flex;
-  font-family: Georgia, serif;
-  font-size: 20px;
-  height: 42px;
-  justify-content: center;
-  width: 42px;
+.brand { align-items: center; color: inherit; display: flex; gap: 14px; text-decoration: none; }
+.brand-logo {
+  display: block;
+  height: 54px;
+  mix-blend-mode: multiply;
+  object-fit: cover;
+  object-position: center 53%;
+  width: 142px;
 }
-.brand strong { display: block; font-family: Georgia, serif; font-size: 18px; letter-spacing: .16em; }
-.brand small { color: var(--muted); display: block; font-size: 11px; letter-spacing: .13em; margin-top: 2px; text-transform: uppercase; }
+.brand-section {
+  border-left: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: .13em;
+  padding-left: 14px;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
 .reviewer-chip {
   align-items: center;
   background: var(--card);
@@ -155,6 +158,8 @@ button { font: inherit; }
   .decision-actions button { flex: 1; }
 }
 @media (max-width: 560px) {
+  .brand-logo { height: 46px; width: 120px; }
+  .brand-section { display: none; }
   .reviewer-chip span:last-child { display: none; }
   .hero h1 { font-size: 42px; }
   .piece-heading { align-items: flex-start; gap: 16px; padding: 24px 20px 20px; }
