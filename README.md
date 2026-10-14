@@ -1,46 +1,61 @@
 # AURA Automated Product Content Pipeline
 
-AURA is an end-to-end product-content workflow for **AURA by Nada**. It receives product photography, organizes every garment in Google Drive, coordinates AI image generation and quality review, routes work through two human approval stages, and reports the state of the entire pipeline in a private operations dashboard.
+A private product-content pipeline for **AURA by Nada**. It receives garment references,
+organizes assets in Google Drive, coordinates image generation and quality review,
+supports two human review stages, and reports the production pipeline.
 
-The system combines n8n orchestration, structured Google Drive folders, scheduled ChatGPT skills, and three purpose-built web applications.
+n8n orchestrates the workflow, Google Drive holds the assets, and three private websites
+serve the creator, designer, and operations team. Website source stays in its respective
+folder; the established repository structure is preserved.
 
-> **Status:** The implementation is complete and ready for final integrated testing. Individual workflow components and dashboard data have been validated; a full production-style run from intake to final designer decision is the remaining acceptance test.
+## Current status — 14 October 2026
 
-## What the system does
+All three websites are deployed. The updated creator Site is **version 4**.
+The n8n workflows remain **unpublished during migration**, as requested.
 
-- Captures incoming WeTransfer submissions from trusted email messages.
-- Creates a consistent folder structure for each product piece.
-- Moves raw assets through preparation and manual-review checkpoints.
-- Generates a four-image AURA product set from approved source photography.
-- Reviews AI outputs against the real garment references.
-- Presents approved sets to the content creator and designer in separate private review sites.
-- Moves the complete piece folder according to each reviewer’s decision.
-- Shows live counts, piece locations, search results, filters, and Google Drive links in an operations dashboard.
+| Component | Status |
+| --- | --- |
+| Creator candidate-selection website | Deployed; up to twelve candidates, exactly one selection per view |
+| Designer website and operations dashboard | Deployed; existing functionality retained |
+| DEV 04B — Creator image routing | Implemented and saved as an unpublished n8n draft |
+| DEV 09 — Verified ZIP cleanup | Implemented and saved unpublished; parent completion trigger not connected |
+| Automatic video extraction and reference classification | Planned; not connected |
+| OpenAI API generation, review, and audit | Awaiting the teammate's migrated skills and invocation/completion contract |
+| Final end-to-end acceptance test | Pending explicit approval |
+
+Offline checks cover contracts, graph/syntax validation, and simulated routing/recovery.
+They do not prove that a real Drive move, deletion, or complete production run succeeded.
+A published page can be available while its queue is unavailable because n8n is off.
 
 ## End-to-end flow
 
 ![AURA end-to-end product content workflow](Architecture%20%26%20Design/aura-end-to-end-process-flow.png)
 
-The diagram follows the complete journey from manual raw-footage upload and WeTransfer intake through preparation, AI generation and validation, content-creator review, designer review, final routing, and dashboard reporting. [Open the original full-resolution process flow (PDF)](Architecture%20%26%20Design/NEWEST%20-%20%20Investigative%20AI%20Process%20Flow%20-%20ExampleWorkflow%20.pdf).
+This original diagram remains the architectural baseline. The latest revision adds
+automated frame preparation, n8n-triggered API jobs, four-view candidate selection,
+and verified archive cleanup. See the
+[migration plan](Architecture%20%26%20Design/API-Automation-Migration.md)
+for the revised integration design.
 
-## Pipeline stages
+1. **Intake:** a trusted WeTransfer submission creates a piece in `RawFootage/Received`.
+2. **Preparation:** extract frames, classify references, and verify evidence coverage.
+   Only then create `READY_FOR_REVIEW.docx` and move the piece to `Processed`.
+3. **Readiness decision:** `READY_FOR_AURA.docx` routes the piece to `Approved`;
+   the existing rejection marker routes unsuitable references to `Rejected`.
+4. **Generation:** n8n invokes the teammate's API-configured generator, reviewer, and
+   auditor. Preserve up to three attempts for each of four product views.
+5. **Completion and cleanup:** verify the finished images and retained references before
+   deleting the two specifically recorded ZIP containers. The skills place the candidate
+   pool in `Content/AIApproved`; n8n must not repeat that move independently.
+6. **Creator selection:** choose exactly one image per view from all candidates.
+   The four selections go to `CreatorApproved`; unselected candidates go to a separate
+   `CreatorRejected` archive for the same source piece.
+7. **Designer decision:** review the four selected images and route the complete approved
+   piece to `DesignerApproved` or `DesignerRejected`.
+8. **Operations:** report stage locations, distinguishing unique garments from rejected
+   image partitions.
 
-| Area | Stage | Meaning |
-| --- | --- | --- |
-| Raw Footage | `Received` | A new piece has been ingested and organized. |
-| Raw Footage | `Processed` | Preparation is complete and the piece is awaiting its AURA readiness decision. |
-| Raw Footage | `Approved` | The references are ready for AI generation. |
-| Raw Footage | `Rejected` | The submitted references or preparation did not pass manual review. |
-| Content | `AIApproved` | The complete four-image set passed automated AI review. |
-| Content | `AIRejected` | Rejected candidates and exhausted/failed generation attempts are retained for inspection. |
-| Content | `CreatorApproved` | The content creator approved the complete piece. |
-| Content | `CreatorRejected` | The content creator rejected the complete piece. |
-| Content | `DesignerApproved` | The designer gave final approval. |
-| Content | `DesignerRejected` | The designer rejected the complete piece. |
-
-The operations dashboard intentionally reports these ten active stages. The Drive initialization workflow also creates `Generated`, but the current operations dashboard does not include it in its data model.
-
-## Google Drive structure
+## Drive structure and stage meanings
 
 ```text
 AURA/
@@ -50,25 +65,44 @@ AURA/
 │   ├── Approved/
 │   └── Rejected/
 └── Content/
-    ├── AIApproved/
-    ├── AIRejected/
-    ├── CreatorApproved/
-    ├── CreatorRejected/
+    ├── Generated/           # Existing folder, outside the current dashboard model
+    ├── AIApproved/          # Queue for creator selection
+    ├── AIRejected/          # Historical archive; no new candidate routing here
+    ├── CreatorApproved/     # Four selected images and the original references
+    ├── CreatorRejected/     # Unselected candidate partition for the same piece
     ├── DesignerApproved/
     └── DesignerRejected/
 ```
 
-Each product is represented by one piece folder that moves between stages. Intake creates the reference areas used by the generation process:
+The prepared piece retains its references and complete candidate tree:
 
 ```text
-Piece Name/
+Piece/
 ├── 01_MATERIAL_CLOSEUPS_4K/
 ├── 02_WHOLE_FRONT_BACK_SIDE/
 ├── 03_SIZE_FIT_MODEL_MANNEQUIN/
-└── 04_PRODUCT_IMAGE_OUTPUTS/   # Four reviewed product images
+└── 04_PRODUCT_IMAGE_OUTPUTS/
+    └── _run/
+        └── candidates/
+            ├── front/                 # Maximum 3 images
+            ├── back/                  # Maximum 3 images
+            ├── three_quarter_front/   # Maximum 3 images
+            └── detail_collage/        # Maximum 3 images
 ```
 
-Moving the folder rather than copying individual images keeps the source evidence, generated outputs, and review state together.
+All twelve possible candidates are available, including AI-failed attempts.
+`AIApproved` is a queue name, not proof that every candidate passed AI review.
+Root-level final copies are not duplicate gallery choices.
+
+Selected images become four direct children of the approved piece's
+`04_PRODUCT_IMAGE_OUTPUTS`; original references follow that piece. Unselected images
+retain their view ancestry under the corresponding rejected archive. Both partitions
+retain the immutable source piece identity; matching names alone are insufficient.
+
+The existing operations dashboard still reports ten stage keys, including historical
+`AIRejected`. Its statistics need a follow-up adjustment for the new partition meaning:
+summing approved and rejected folder counts would double-count some garments. Current
+dashboard totals must not be presented as unique-piece accounting after cutover.
 
 ## Repository structure
 
@@ -79,9 +113,15 @@ Moving the folder rather than copying individual images keeps the source evidenc
 │   ├── DEV - 01 WeTransfer Intake.json
 │   ├── DEV - 02 Raw Footage Preparation Handoff.json
 │   ├── DEV - 03 Manual Review Routing.json
-│   ├── DEV - 04 Content Creator Review Dashboard Backend.json
+│   ├── DEV - 04 Content Creator Review Dashboard Backend.json  # Legacy
 │   ├── DEV - 05 Designer Review Dashboard Backend.json
-│   └── DEV - 06 Operations Dashboard Backend.json
+│   ├── DEV - 06 Operations Dashboard Backend.json
+│   └── creator-selection/
+│       ├── DEV - 04B Creator Candidate Selection and Image Routing.json
+│       ├── DEV - 09 Verified ZIP Cleanup After Generation and Review.json
+│       ├── routing-state-seed.csv
+│       ├── *.mjs           # Builders, routing helpers, and offline tests
+│       └── README.md
 ├── content creator website/
 ├── designer website/
 ├── operations dashboard website/
@@ -89,171 +129,121 @@ Moving the folder rather than copying individual images keeps the source evidenc
 └── README.md
 ```
 
-> The directory name `AURA Atomated Image Generation n8n Workflow` is preserved to match the existing repository structure.
+The existing spelling of `AURA Atomated Image Generation n8n Workflow` is preserved.
+DEV 04B replaces the creator flow at cutover without overwriting the legacy DEV 04 backup.
 
-## n8n workflow catalog
+## Workflow catalog
 
 | Workflow | Responsibility |
 | --- | --- |
-| `Initialize Aura Drive Structure` | Creates the root Raw Footage and Content folder hierarchy. Run once for a new environment. |
-| `DEV - 01 WeTransfer Intake` | Finds trusted submissions, resolves and downloads WeTransfer files, creates piece/reference folders, uploads the transfer, and routes permanent failures. |
-| `DEV - 02 Raw Footage Preparation Handoff` | Detects `READY_FOR_REVIEW.docx` and moves prepared pieces from `Received` to `Processed`. |
-| `DEV - 03 Manual Review Routing` | Detects the approved or rejected marker and moves pieces from `Processed` to `Approved` or `Rejected`. |
-| `DEV - 04 Content Creator Review Dashboard Backend` | Lists `AIApproved` pieces and their four product images, validates decisions, and moves the complete folder to `CreatorApproved` or `CreatorRejected`. |
-| `DEV - 05 Designer Review Dashboard Backend` | Lists `CreatorApproved` pieces, validates decisions, and moves the complete folder to `DesignerApproved` or `DesignerRejected`. |
-| `DEV - 06 Operations Dashboard Backend` | Counts and lists pieces across all ten active stages for the live dashboard. |
+| Initialize Aura Drive Structure | Creates the initial hierarchy; do not rerun blindly in an existing environment |
+| DEV 01 — WeTransfer Intake | Receives trusted submissions and stores the original assets |
+| DEV 02 — Raw Footage Preparation Handoff | Detects `READY_FOR_REVIEW.docx` and moves prepared pieces to `Processed` |
+| DEV 03 — Manual Review Routing | Routes preparation approval/rejection to the appropriate raw stage |
+| DEV 04 — Creator Review (legacy) | Previous whole-piece Good / No Good backend; retained as a backup |
+| DEV 04B — Candidate Selection and Image Routing | Lists candidates, validates four selections, journals moves, and verifies destinations |
+| DEV 05 — Designer Review | Reviews the selected set and routes the final piece decision |
+| DEV 06 — Operations Dashboard | Lists pieces and counts across the existing stage model |
+| DEV 09 — Verified ZIP Cleanup | Internal completion-gated subworkflow; deletes exactly two verified ZIP-file IDs |
 
-The review backends verify that a submitted piece is still in the expected source folder before moving it. This prevents stale pages or repeated clicks from moving an already-reviewed piece again.
+DEV 04B and DEV 09 share a conditional mutex and durable progress records in
+`AURA Routing State`. Identical submissions resume the same selection; stale or different
+selections cannot replace it. A hard interruption keeps the lock held for deliberate
+recovery. See the
+[selection and recovery guide](Architecture%20%26%20Design/Creator-Candidate-Selection.md)
+and [workflow import guide](AURA%20Atomated%20Image%20Generation%20n8n%20Workflow/creator-selection/README.md).
 
-## Web applications
+## Private websites
 
-### Content creator review
+| Website | Purpose |
+| --- | --- |
+| [Content creator](https://aura-content-review.karimkhalil631.chatgpt.site) | Compare candidates and submit exactly four selections |
+| [Designer](https://aura-designer-review.karimkhalil631.chatgpt.site) | Approve or reject the selected four-image set |
+| [Operations dashboard](https://aura-operations-dashboard.karimkhalil631.chatgpt.site) | Search, filter, and inspect the pipeline |
 
-Reads from `Content/AIApproved`, displays the four images in `04_PRODUCT_IMAGE_OUTPUTS`, and provides **Good** and **No Good** actions for the complete piece.
-
-Decision routing:
-
-- **Good** → `Content/CreatorApproved`
-- **No Good** → `Content/CreatorRejected`
-
-### Designer review
-
-Reads from `Content/CreatorApproved` and presents the same four-image review experience for the final design decision.
-
-Decision routing:
-
-- **Good** → `Content/DesignerApproved`
-- **No Good** → `Content/DesignerRejected`
-
-### Operations dashboard
-
-Provides a bright, responsive view of the complete production pipeline, including:
-
-- live counts for every active Google Drive stage;
-- All Pipeline, Raw Footage, and Content toggles;
-- volume and distribution charts;
-- piece and stage search;
-- stage-specific filtering;
-- direct links to the corresponding Google Drive folders;
-- manual refresh and last-updated state; and
-- light and dark display modes.
-
-All three applications are private OpenAI Sites deployments with email-based access controls.
-
-## Application architecture
-
-The browser never calls authenticated n8n endpoints directly:
+Site publication and n8n activation are separate. The browser calls server routes,
+not authenticated n8n directly:
 
 ```text
-Browser
-  → private OpenAI Site
-  → server-side application route
-  → Basic Auth-protected n8n production webhook
-  → Google Drive
+Allowed visitor → private Site → server-side API route → authenticated n8n → Google Drive
 ```
 
-This design keeps n8n credentials and Google Drive authorization on the server side. Site access and n8n webhook authentication are separate security layers.
+Credentials stay server-side. Private Site access does not automatically grant access to
+private Drive thumbnails; verify image delivery without making garment folders public.
 
-## Local development
+## Development and configuration
 
-Each website is an independent Next.js/Vinext project and can be run separately.
+Each website is an independent Next.js/Vinext application:
 
 ```bash
-cd "content creator website"   # or designer website / operations dashboard website
+cd "content creator website"  # Or one of the other website folders
 npm ci
 cp .env.example .env.local
 npm run dev
 ```
 
-Open the local URL printed by the development server. Before committing a website change, run:
+Configure the appropriate **server-side** runtime settings:
+
+| Application | Endpoint settings | Secret settings |
+| --- | --- | --- |
+| Creator | `N8N_PIECES_URL`, `N8N_SELECTION_URL` | `N8N_BASIC_USERNAME`, `N8N_BASIC_PASSWORD` |
+| Designer | `N8N_PIECES_URL`, `N8N_DECISION_URL` | `N8N_BASIC_USERNAME`, `N8N_BASIC_PASSWORD` |
+| Operations | `N8N_DASHBOARD_URL` | `N8N_BASIC_USERNAME`, `N8N_BASIC_PASSWORD` |
+
+Creator endpoints are `/webhook/creator-review/candidates` and
+`/webhook/creator-review/selection` on the new n8n host. There is no fallback to the old
+whole-piece `/decision` handler. Deployed sites use production webhook URLs, never the
+one-shot `/webhook-test/` URLs. Runtime secrets are separate from source.
+
+Offline checks, from the repository root (Node 22.13 or newer):
 
 ```bash
-npm run lint
+node --test 'content creator website/tests/'*.test.mjs 'AURA Atomated Image Generation n8n Workflow/creator-selection/'*.test.mjs
+```
+
+Type-check and build the changed website before publication:
+
+```bash
+cd "content creator website"
+npx tsc --noEmit --incremental false
 npm run build
 ```
 
-### Review-site environment variables
+## Activation and acceptance
 
-```text
-N8N_PIECES_URL=
-N8N_DECISION_URL=
-N8N_BASIC_USERNAME=
-N8N_BASIC_PASSWORD=
-```
+Keep n8n unpublished until the owner approves testing. Map exact Drive IDs, reconnect
+credentials, verify the routing table and seed row, and compare the latest exported
+Code nodes with the account drafts before activation. Do not recreate populated folders
+to resolve duplicate dropdown names.
 
-### Operations-dashboard environment variables
+The final acceptance run should use disposable, non-sensitive assets and cover:
 
-```text
-N8N_DASHBOARD_URL=
-N8N_BASIC_USERNAME=
-N8N_BASIC_PASSWORD=
-```
+- intake, extraction, classification, evidence coverage, and readiness markers;
+- API completion and all retained reference/candidate files;
+- cleanup refusing incomplete, changed, or shared archives before deleting only the
+  two verified ZIPs after successful generation and review;
+- one creator choice per view, stale/duplicate submits, and partial-move recovery;
+- both designer decisions with the actual selected set;
+- allowed-user sign-in, private image delivery, and denied-user access; and
+- correct unique-piece versus partition statistics in the dashboard.
 
-Use n8n **production** webhook URLs for deployed sites. `.env.local` is ignored by Git; production values belong in the hosting environment, not in the repository.
+## Security and operations
 
-## Installation and deployment
-
-### 1. Prepare Google Drive
-
-Import and run `Initialize Aura Drive Structure.json`, or map the workflows to an existing folder hierarchy. Use exact folder IDs wherever possible because Drive permits duplicate folder names.
-
-### 2. Import the n8n workflows
-
-Import each JSON file into n8n, reconnect the Google Drive and email credentials, and verify every referenced folder ID. Imported credential names are references only; secrets must be configured in the destination n8n instance.
-
-### 3. Configure webhooks
-
-Set the review GET/POST webhooks and the operations statistics webhook to use Basic Auth and production URLs. Publish only the workflows required for the current operating stage.
-
-### 4. Configure the websites
-
-Add the appropriate environment variables to each hosting project. Do not place credentials in client-side variables or source files.
-
-### 5. Configure access
-
-Keep each Site private and add the intended users to its email allowlist. Access changes do not require a new deployment.
-
-## Final acceptance test
-
-The recommended final test uses one non-sensitive sample piece and verifies the complete lifecycle:
-
-1. Submit a trusted WeTransfer email.
-2. Confirm the piece and its reference subfolders appear in `RawFootage/Received`.
-3. Add `READY_FOR_REVIEW.docx` and confirm the move to `Processed`.
-4. Add `READY_FOR_AURA.docx` and confirm the move to `Approved`.
-5. Run the scheduled generator and reviewer tasks.
-6. Confirm the four images and the resulting `AIApproved` or `AIRejected` route.
-7. Submit both content-creator decision paths with test pieces.
-8. Submit both designer decision paths with test pieces.
-9. Confirm all folder moves, duplicate-click protection, webhook responses, and dashboard counts.
-10. Review n8n executions for retries, errors, and unexpected duplicate processing.
-
-## Security and operational notes
-
-- Never commit `.env.local`, passwords, OAuth tokens, or webhook credentials.
-- Rotate any credential that has been shared outside its intended secret store.
-- Restrict review and dashboard Sites to approved email addresses.
-- Keep Google Drive permissions limited to the people and service accounts that need them.
-- Prefer Drive folder IDs over folder names in n8n configuration.
-- Test with copies or non-sensitive assets before running destructive folder moves in production.
-- Workflow JSON exports are configuration backups; the active n8n instance and Google Drive IDs must remain aligned.
-
-## Technology stack
-
-- **n8n** — orchestration, scheduling, validation, webhooks, and routing
-- **Google Drive** — source-of-truth asset storage and stage state
-- **Scheduled ChatGPT skills** — reference-grounded image generation and independent review
-- **Next.js 16 + React 19 + TypeScript** — website application layer
-- **Vinext + Cloudflare Workers** — OpenAI Sites build/runtime stack
-- **OpenAI Sites** — private hosting and email-based access control
-- **Email + WeTransfer** — external asset intake
+- Never commit API keys, passwords, `.env.local`, OAuth tokens, or source-upload tokens.
+- Restrict private websites to their intended visitors.
+- Use immutable Drive IDs, checksums, bounded retries, and durable job records.
+- Permanently delete only verified ZIP **files** from trusted provenance. Preserve raw
+  videos, extracted references, and stage folders.
+- Do not steal a running lock or erase journals to force a retry.
+- Exports are backups, not proof of an active deployment; verify credentials, table
+  IDs, settings, and code versions before any production run.
+- The teammate owns API skill setup. An API key alone does not give skills Drive access.
 
 ## Documentation
 
-- Component-specific setup details are available in each website folder’s `README.md`.
-- The current architecture reference is stored under `Architecture & Design/`.
-- n8n workflow exports in this repository are the portable implementation artifacts for the automation layer.
-
-## Owner
+- [Creator selection, folder contract, API schema, and recovery](Architecture%20%26%20Design/Creator-Candidate-Selection.md)
+- [API migration and remaining integration work](Architecture%20%26%20Design/API-Automation-Migration.md)
+- [DEV 04B / DEV 09 import and verification](AURA%20Atomated%20Image%20Generation%20n8n%20Workflow/creator-selection/README.md)
+- Component setup details in each website's `README.md`
 
 Built and maintained by **Karim Khalil** for **AURA by Nada**.

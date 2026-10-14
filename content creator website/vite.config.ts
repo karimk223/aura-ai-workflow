@@ -45,6 +45,14 @@ export default defineConfig(async () => {
   const { cloudflare } = await import('@cloudflare/vite-plugin');
 
   return {
+    // Miniflare does not forward arbitrary shell variables to Worker process.env.
+    // Only this non-secret local-preview switch is compiled in; route guards also
+    // require NODE_ENV !== production, so a deployed build cannot use demo writes.
+    define: {
+      'process.env.AURA_CREATOR_PREVIEW': JSON.stringify(
+        process.env.AURA_CREATOR_PREVIEW === '1' ? '1' : '0',
+      ),
+    },
     css: { postcss: { plugins: [tailwindcss()] } },
     server: isCodexSeatbeltSandbox
       ? { watch: { useFsEvents: false, usePolling: true } }

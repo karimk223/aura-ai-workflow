@@ -1,0 +1,14 @@
+# Local build state and private configuration; source examples remain tracked.
+.DS_Store
+**/node_modules/
+**/.next/
+**/.vinext/
+**/dist/
+**/.wrangler/
+**/coverage/
+**/*.tsbuildinfo
+**/.env*
+!**/.env.example
+
+# Superseded local output; publish the final DEV 04B and DEV 09 exports only.
+AURA Atomated Image Generation n8n Workflow/creator-selection/DEV - 04B Creator Candidate Selection READ-ONLY DRAFT.json
