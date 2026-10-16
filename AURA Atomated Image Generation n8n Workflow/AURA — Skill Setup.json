@@ -1,0 +1,178 @@
+{
+  "name": "AURA — Skill Setup",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "fc8961ed-ad7f-4e8b-8187-49db2362930b",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -48,
+        32
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://api.openai.com/v1/skills?limit=100",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "id": "74f749a2-6764-4073-984c-a93f3866ff34",
+      "name": "List AURA Skills",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        240,
+        -32
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "h6wssUNUoREt3Wzo",
+          "name": "AURA OpenAI Execution"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\"role\":\"categorizer\",\"id\":\"skill_6ad0fadc44908191a16f11cdae959a050f1cba0683951212\"},{\"role\":\"auditor\",\"id\":\"skill_6ad0fadecbbc8191a638658a3b405a9403fe0ac65dd06008\"},{\"role\":\"generator\",\"id\":\"skill_6ad0fadd6af88191bb7b7bc3d35c59df0554ae2a9eacb8f8\"},{\"role\":\"reviewer\",\"id\":\"skill_6ad0faddf7fc81918acd053b76d1a2820330b18143665fda\"}].map(s=>({json:{...s,version:\"1\",bundleUrl:\"https://api.openai.com/v1/skills/\"+s.id+\"/versions/1/content\"}}));"
+      },
+      "id": "c9c8241d-6441-40c7-8599-fa65f46a5073",
+      "name": "Prepare Read-Only Bundle Reads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        176,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.bundleUrl }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "skillBundle"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "d32d68f4-6b30-4b56-9a6a-62b377e8e558",
+      "name": "Download Reviewed Skill Bundles",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        432,
+        160
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "w53N0DPdnOhOroJa",
+          "name": "AURA OpenAI Setup — Read Only"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "binaryPropertyName": "skillBundle",
+        "outputPrefix": "entry_"
+      },
+      "id": "195d949a-6b77-4456-a0ef-c3be02cef48e",
+      "name": "Read Skill Bundle Archives",
+      "type": "n8n-nodes-base.compression",
+      "typeVersion": 1.1,
+      "position": [
+        688,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const result=[]; const inputs=$input.all(); for(let i=0;i<inputs.length;i++){const item=inputs[i];const plan=$('Prepare Read-Only Bundle Reads').itemMatching(i).json;const files=[];for(const [field,file] of Object.entries(item.binary||{})){if(!field.startsWith('entry_'))continue;const path=[file.directory,file.fileName].filter(Boolean).join('/');const bytes=await this.helpers.getBinaryDataBuffer(i,field);if(bytes.length>1048576)throw new Error('Review unexpectedly large bundle entry manually: '+path);const isText=['.md','.json','.txt','.py','.js','.mjs','.ts','.sh','.yaml','.yml'].some(ext=>path.toLowerCase().endsWith(ext));files.push({path,bytes:bytes.length,...(isText?{text:bytes.toString('utf8')}: {})});} if(!files.some(f=>f.path.split('/').pop().toLowerCase()==='skill.md'))throw new Error('Missing SKILL.md for '+plan.role);result.push({json:{...plan,files},pairedItem:{item:i}});}return result;"
+      },
+      "id": "9b732d21-55e1-4676-8227-836a44dd594f",
+      "name": "Inspect Skill Text Only",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        160
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "List AURA Skills",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare Read-Only Bundle Reads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Read-Only Bundle Reads": {
+      "main": [
+        [
+          {
+            "node": "Download Reviewed Skill Bundles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Reviewed Skill Bundles": {
+      "main": [
+        [
+          {
+            "node": "Read Skill Bundle Archives",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Skill Bundle Archives": {
+      "main": [
+        [
+          {
+            "node": "Inspect Skill Text Only",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "0bf0a2af-0a00-4c50-a51f-05e9faccacb4",
+  "meta": {
+    "instanceId": "e63fdda36db6f938b08488f118363a6fd2a9c05de12c43fd9bb6c2525afd24c8"
+  },
+  "nodeGroups": [],
+  "id": "jPsoAopaFK9kAS7L",
+  "tags": []
+}
