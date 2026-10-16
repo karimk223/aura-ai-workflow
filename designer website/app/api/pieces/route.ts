@@ -10,6 +10,7 @@ interface RawImage {
 
 interface RawPiece {
   pieceFolderId?: string;
+  reviewRevision?: string;
   id?: string;
   pieceName?: string;
   name?: string;
@@ -68,6 +69,7 @@ export async function GET() {
 
     const pieces = (payload.pieces ?? []).map((piece) => ({
       pieceFolderId: piece.pieceFolderId ?? piece.id ?? '',
+      reviewRevision: piece.reviewRevision ?? '',
       pieceName: piece.pieceName ?? piece.name ?? 'Untitled piece',
       images: (piece.images ?? []).map((image) => ({
         id: image.id ?? image.name ?? crypto.randomUUID(),

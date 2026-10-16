@@ -1,77 +1,59 @@
-# Creator selection and verified archive cleanup
+# Current AURA runtime and Creator routing
 
-This directory contains the source helpers, offline tests, and import-ready exports for
-the revised creator flow. Original DEV 01–06 exports remain in the parent directory.
-DEV 04B replaces legacy DEV 04 at cutover without overwriting its backup.
+Updated 16 October 2026. The [root README](../../README.md) identifies all eight
+workflows for the complete project; the [test guide](../../Architecture%20%26%20Design/End-to-End-Testing.md)
+is the current import and acceptance procedure.
 
-| Export | Trigger | Status |
-| --- | --- | --- |
-| DEV - 04B Creator Candidate Selection and Image Routing.json | Authenticated GET candidates and POST selection webhooks | Saved unpublished; real routing not tested |
-| DEV - 09 Verified ZIP Cleanup After Generation and Review.json | Internal Execute Workflow trigger | Saved unpublished; parent completion trigger not connected |
+## Current imports
 
-These exports are generated from the latest helpers. The account drafts were imported
-during implementation; compare/reimport the latest export before activation, including
-final Code-node bundling and retry-budget changes. GitHub does not automatically
-synchronize or activate an existing n8n workflow.
+- `DEV - 04B Creator Candidate Selection and Image Routing.json`: reviewed Creator
+  backend with native fixed JSON/bodyless paths. It replaces DEV 04.
+- Parent directory `DEV - 07 CloudConvert Frame Extraction.json`: reviewed extractor.
+- Parent directory `DEV - 10 AURA Essential Scheduled Skills — TEST FIRST.json`:
+  native source/skill/artifact transport and stage orchestration.
+- Parent directory `DEV - 11 Designer Approval and 48-Hour Cleanup — TEST FIRST.json`:
+  human Designer decisions and separately enabled final cleanup. It replaces DEV 05.
 
-## Import checklist
+DEV 09 in this directory is a **legacy inactive backup**. Do not connect its old
+generation-completion ZIP deletion policy. DEV 10 does not depend on DEV 08/08B or
+the experimental audit/worker addons.
 
-1. Back up existing workflows and keep all imported workflows inactive.
-2. Create or map `AURA Routing State` with five string columns: `sourcePieceId`,
-   `status`, `owner`, `jobId`, and `jobJson`.
-3. Seed exactly one mutex row from `routing-state-seed.csv`:
-   `__creator_mutex__`, `idle`, `none`, `none`, `{}`. Do not duplicate it.
-4. Map every Data Table node to the actual table. The current account uses
-   `0jVQUhHbb9ApVzSH`; another account must use its own ID.
-5. Map Drive requests to `Aura Google Drive`. Both creator webhook nodes must use
-   `AURA Creator Review`, not the designer credential.
-6. Verify exact AIApproved, CreatorApproved, and CreatorRejected folder IDs.
-   Never choose identically named folders without checking their parents.
-7. Configure the creator Site's server-side `N8N_PIECES_URL` and `N8N_SELECTION_URL`
-   to `/webhook/creator-review/candidates` and `/webhook/creator-review/selection`.
-   Preserve Basic Auth secrets and private Site access.
-8. Leave DEV 09 disconnected until the parent writes a trusted generation completion
-   record. Do not run it with invented archive IDs or empty manifests.
+## Source
 
-No real Drive moves or permanent deletions were performed during implementation.
+- `essential-runtime.mjs`, `essential_materializer.py`: active four-skill IO bridge;
+  attempt limits, independent review, actual reference delivery and artifact persistence.
+- `designer-cleanup-runtime.mjs`, `final-cleanup-plan.mjs`: current Designer/final cleanup.
+- `selection-core.mjs`, `traversal-core.mjs`, `routing-engine.mjs`: human Creator routing.
+- `build-essential-workflow.mjs`, `build-designer-cleanup-workflow.mjs`,
+  `build-extractor-workflow.mjs`, `build-reviewed-creator-workflow.mjs`: reviewed builders.
+  The extractor repair builder accepts the original export as an explicit argument;
+  offline import tests validate the committed reviewed extractor directly.
+- Older `build-routing`/`build-draft` source remains as Creator implementation history.
+  Use the reviewed canonical export above for imports.
 
-## Source and tests
+All imported defaults are inactive. DEV 10 has paid execution disabled; DEV 11 has
+cleanup/purge disabled. Native HTTP Send Body fields are booleans. An IF routes JSON
+bodies to separate nodes; do not paste boolean expressions into Content Type.
 
-- `selection-core.mjs`: candidate indexing, protocol validation, selection plans.
-- `traversal-core.mjs`: bounded recursive Drive traversal and pagination.
-- `routing-engine.mjs`: durable routing, exact file operations, and recovery.
-- `cleanup-engine.mjs`: completion/provenance checks and exact ZIP-file cleanup.
-- `code-bundle.mjs`: self-contained n8n Code-node helpers.
-- `build-draft.mjs`: shared read/validation graph used by the final builders.
-- `build-routing.mjs` / `build-cleanup.mjs`: final inactive workflow builders.
-- `*.test.mjs`: contracts, graph/syntax, mocked Drive, retry, and recovery checks.
+The `AURA Routing State` table uses `sourcePieceId`, `status`, `owner`, `jobId`,
+`jobJson` string columns. `routing-state-seed.csv` supplies the Creator mutex;
+`essential-state-seed.csv` supplies the pipeline mutex for a **new empty installation**.
+The current account already has both rows; never import duplicates.
 
-From the repository root, with Node 22.13 or newer:
+Keep Drive credentials and each website's own Basic Auth reference. DEV 04B expects
+`AURA Creator Review`; DEV 11 expects `AURA Designer Review Login`.
+Journals and locks remain necessary to prevent duplicate paid requests and file moves.
+Reconcile an uncertain execution before releasing its owner; never erase paid progress.
 
-```bash
-node --test 'AURA Atomated Image Generation n8n Workflow/creator-selection/'*.test.mjs 'content creator website/tests/'*.test.mjs
-node 'AURA Atomated Image Generation n8n Workflow/creator-selection/build-routing.mjs' --stats
-node 'AURA Atomated Image Generation n8n Workflow/creator-selection/build-cleanup.mjs' --stats
+## Offline verification
+
+Use Node 24 from this directory:
+
+```sh
+node --test essential-runtime.test.mjs import-contract.test.mjs routing-engine.test.mjs selection-core.test.mjs traversal-core.test.mjs final-cleanup-plan.test.mjs
+python3 -m unittest test_essential_materializer.py
 ```
 
-Both final builders support `--print` for generated JSON and export `active: false`.
-The superseded read-only draft is not the final import.
-
-## Recovery and cleanup safety
-
-A conditional mutex serializes writes; a durable journal records reserved destination
-IDs and completed operations. Repeated identical selections resume the stored job.
-Stale revisions or different selections cannot overwrite it. The original piece moves
-to CreatorApproved last, after all selected/rejected destinations are verified.
-
-After a hard interruption, confirm the recorded owner execution has stopped. Inspect
-the journal and Drive IDs before manually releasing only the mutex. Never steal a
-running lock or erase progress to bypass an incomplete operation.
-
-Cleanup requires generator and reviewer completion, retained reference/candidate
-verification, and exactly two trusted ZIP-file records: `original_transfer_zip` and
-`extracted_frames_zip`. It permanently deletes those exact IDs and confirms their
-absence. It never broadly searches for ZIPs or deletes references, videos, or images.
-
-See the [selection and recovery guide](../../Architecture%20%26%20Design/Creator-Candidate-Selection.md)
-for the detailed API schemas, completion manifest, and cutover checks.
+The current suite is offline and does not call OpenAI, CloudConvert, or Drive. Live
+conversion, model access, website authentication/image delivery and garment quality
+remain acceptance-test outcomes. A real 48-hour purge cannot be proven in one day.

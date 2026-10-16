@@ -1,5 +1,10 @@
 # AURA Content Creator Review Website
 
+Current backend, 16 October 2026: **DEV 04B**, including its reviewed fixed JSON/bodyless
+transport paths. This folder already contains the deployed version-4 four-view selector.
+See the root README and complete project test guide for the current pipeline; DEV 09's
+early ZIP deletion is superseded by DEV 11's final Designer/48-hour cleanup.
+
 This folder contains the complete source for the private content creator review dashboard.
 
 The candidate-selection implementation:

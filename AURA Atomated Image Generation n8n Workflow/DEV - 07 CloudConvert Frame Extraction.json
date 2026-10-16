@@ -1,0 +1,1588 @@
+{
+  "name": "DEV - 07 CloudConvert Frame Extraction",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        1264,
+        1456
+      ],
+      "id": "f370ba4a-519a-45e3-ab36-b9e0f7a725e9",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "url": "https://api.cloudconvert.com/v2/users/me",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        1712,
+        1680
+      ],
+      "id": "2ea23e7d-12f5-4c61-a003-2e43710d543c",
+      "name": "Check CloudConvert Credits",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "0vTnrwvhrOrNpmt5",
+          "name": "CloudConvert – AURA"
+        }
+      },
+      "retryOnFail": false,
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "8fa3f8fd-ec2a-4146-92ea-c7891cac1ec2",
+              "leftValue": "={{ $json.data.credits }}",
+              "rightValue": 1,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            },
+            {
+              "id": "8dc33eac-cd84-4dfb-9935-fafec141aeb8",
+              "leftValue": "={{ $json.data.paying }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1936,
+        1680
+      ],
+      "id": "1c6e273e-0551-4968-aa54-14df91d71fcc",
+      "name": "Free Credits Available?"
+    },
+    {
+      "parameters": {
+        "workflowInputs": {
+          "values": [
+            {
+              "name": "pieceFolderId"
+            },
+            {
+              "name": "sourceFileIds",
+              "type": "array"
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        1264,
+        1680
+      ],
+      "id": "883a5f74-e6ec-4902-b7fa-6e34ad676d4a",
+      "name": "Receive Piece Input"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nif (items.length !== 1) {\n  throw new Error('Expected exactly one piece per call.');\n}\n\nconst input = items[0].json;\n\nfunction cleanId(value, label) {\n  if (typeof value !== 'string') {\n    throw new Error(label + ' must be a Drive ID string.');\n  }\n\n  const id = value.trim();\n\n  if (!/^[A-Za-z0-9_-]+$/.test(id)) {\n    throw new Error(label + ' must be a non-empty ID, not a URL.');\n  }\n\n  return id;\n}\n\nconst pieceFolderId = cleanId(input.pieceFolderId, 'pieceFolderId');\n\nif (!Array.isArray(input.sourceFileIds) || input.sourceFileIds.length === 0) {\n  throw new Error('sourceFileIds must be a non-empty array of file IDs.');\n}\n\nconst sourceFileIds = [...new Set(\n  input.sourceFileIds.map((id, index) =>\n    cleanId(id, 'sourceFileIds[' + index + ']')\n  )\n)];\n\nif (sourceFileIds.includes(pieceFolderId)) {\n  throw new Error('A source file ID cannot be the piece folder ID.');\n}\n\nif(sourceFileIds.length!==1)throw new Error('Exactly one source ZIP is required per piece.');\nreturn [{\n  json: {\n    pieceFolderId,\n    sourceFileIds,\n    sourceFileCount: sourceFileIds.length,\n    framesPerSecond: 2\n  },\n  pairedItem: { item: 0 }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1488,
+        1680
+      ],
+      "id": "c233512e-0b77-4525-a364-eff5485ff592",
+      "name": "Validate Piece Input"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nif (items.length !== 1) {\n  throw new Error('Expected exactly one piece per call.');\n}\n\nconst account = items[0].json.data;\n\nif (\n  !account ||\n  account.email !== 'aura.atelier.by.nada@gmail.com' ||\n  account.paying !== false ||\n  !Number.isFinite(account.credits) ||\n  account.credits < 1\n) {\n  throw new Error('Expected the AURA free account with available credits.');\n}\n\nconst piece = $('Validate Piece Input').itemMatching(0).json;\n\nif (\n  !piece.pieceFolderId ||\n  !Array.isArray(piece.sourceFileIds) ||\n  piece.sourceFileIds.length === 0\n) {\n  throw new Error('Validated piece input is missing.');\n}\n\nreturn [{\n  json: {\n    ...piece,\n    cloudConvertCredits: account.credits\n  },\n  pairedItem: { item: 0 }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2192,
+        1664
+      ],
+      "id": "3f988bee-df4e-42f0-bc25-0942cc154e11",
+      "name": "Restore Piece Context"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "sourceFileIds",
+        "include": "allOtherFields",
+        "options": {
+          "destinationFieldName": "sourceFileId"
+        }
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1.1,
+      "position": [
+        2416,
+        1664
+      ],
+      "id": "4d70b6ed-f13a-44e0-93bd-7b61b6f226a2",
+      "name": "Prepare Source Files"
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://www.googleapis.com/drive/v3/files/' + $json.sourceFileId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "id,name,mimeType,parents,trashed,size,md5Checksum,version,capabilities/canDownload"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        2640,
+        1664
+      ],
+      "id": "65d8f0d4-e4cd-4ba5-8477-70259281a782",
+      "name": "Get Source File Metadata",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "DxuMVynJiqHaTJ6T",
+          "name": "Aura Google Drive"
+        }
+      },
+      "retryOnFail": false,
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nif (items.length === 0) {\n  throw new Error('No source file metadata received.');\n}\n\nreturn items.map((item, index) => {\n  const file = item.json;\n  const piece = $('Prepare Source Files').itemMatching(index).json;\n\n  if (file.id !== piece.sourceFileId) {\n    throw new Error('Source file ID does not match the requested file.');\n  }\n\n  if (!Array.isArray(file.parents) ||\n      !file.parents.includes(piece.pieceFolderId)) {\n    throw new Error('Source ZIP does not belong to this piece folder.');\n  }\n\n  if (file.trashed !== false ||\n      file.capabilities?.canDownload !== true) {\n    throw new Error('Source file is trashed or cannot be downloaded.');\n  }\n\n  const zipTypes = [\n    'application/zip',\n    'application/x-zip-compressed',\n    'application/x-zip'\n  ];\n\n  if (typeof file.name !== 'string' ||\n      !file.name.toLowerCase().endsWith('.zip') ||\n      !zipTypes.includes(file.mimeType)) {\n    throw new Error('Expected a ZIP archive for this extraction workflow.');\n  }\n\n  if(/^AURA_reference_images_.*\\.zip$/i.test(file.name))throw new Error('A generated reference ZIP cannot be used as a source ZIP.');\n  const size = Number(file.size);\n  if(size>200*1024*1024)throw new Error('Source ZIP exceeds the 200 MiB transfer limit.');\n\n  if (typeof file.size !== 'string' ||\n      !/^\\d+$/.test(file.size) ||\n      !Number.isSafeInteger(size) || size <= 0) {\n    throw new Error('Source ZIP has an invalid or empty size.');\n  }\n\n  if (!/^[a-f0-9]{32}$/i.test(file.md5Checksum ?? '') ||\n      !/^\\d+$/.test(file.version ?? '')) {\n    throw new Error('Source ZIP checksum or version is missing.');\n  }\n\n  return {\n    json: {\n      ...piece,\n      sourceFileName: file.name,\n      sourceFileSizeBytes: size,\n      sourceFileMetadata: file\n    },\n    pairedItem: { item: index }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2864,
+        1664
+      ],
+      "id": "ef807f1f-2a74-4ad3-b09b-9d160debc660",
+      "name": "Validate Source Files"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $json.sourceFileId }}",
+          "mode": "id"
+        },
+        "options": {
+          "binaryPropertyName": "sourceZip",
+          "fileName": "={{ $json.sourceFileName }}"
+        }
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        3088,
+        1664
+      ],
+      "id": "c184feca-8167-4041-8cda-2376e5912c84",
+      "name": "Download Source ZIP",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "DxuMVynJiqHaTJ6T",
+          "name": "Aura Google Drive"
+        }
+      },
+      "retryOnFail": false,
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "binaryPropertyName": "sourceZip",
+        "outputPrefix": "entry_",
+        "operation": "decompress"
+      },
+      "type": "n8n-nodes-base.compression",
+      "typeVersion": 1.1,
+      "position": [
+        3312,
+        1664
+      ],
+      "id": "0ada948e-b344-4b6d-bd4e-c1e01b2b545e",
+      "name": "Unpack Source ZIP"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nif (items.length === 0) {\n  throw new Error('No unpacked ZIP data received.');\n}\n\nconst piece = items[0].json;\n\nif (items.length !== piece.sourceFileCount) {\n  throw new Error('Expected all source ZIPs for this piece.');\n}\n\nconst videoExtensions = new Set([\n  'mp4', 'mov', 'm4v', 'avi', 'mkv', 'webm',\n  'mpg', 'mpeg', 'mts', 'm2ts', 'wmv', 'flv',\n  '3gp', '3g2', 'mxf'\n]);\n\nconst imageExtensions = new Set([\n  'jpg', 'jpeg', 'png', 'webp', 'heic', 'heif',\n  'avif', 'tif', 'tiff', 'bmp', 'gif'\n]);\n\nconst videos = [];\nconst images = [];\nconst ignoredFiles = [];\nconst sourceArchives = [];\nconst binary = {};\nconst seenSources = new Set();\n\nfor (const item of items) {\n  const source = item.json;\n\n  if (source.pieceFolderId !== piece.pieceFolderId ||\n      source.framesPerSecond !== piece.framesPerSecond) {\n    throw new Error('Cannot combine inputs from different pieces.');\n  }\n\n  if (!source.sourceFileId || seenSources.has(source.sourceFileId)) {\n    throw new Error('Missing or duplicate source ZIP ID.');\n  }\n\n  seenSources.add(source.sourceFileId);\n  sourceArchives.push({\n    sourceFileId: source.sourceFileId,\n    sourceFileName: source.sourceFileName,\n    sourceFileSizeBytes: source.sourceFileSizeBytes,\n    sourceFileMetadata: source.sourceFileMetadata\n  });\n\n  for (const [inputField, file] of Object.entries(item.binary ?? {})) {\n    const name = String(file.fileName ?? '').replace(/\\\\/g, '/');\n    const baseName = name.split('/').pop() ?? '';\n\n    if (!name || name.startsWith('/') ||\n        /^[A-Za-z]:/.test(name) || name.includes('\\u0000') ||\n        name.split('/').includes('..')) {\n      throw new Error('Unsafe or missing filename in source ZIP.');\n    }\n\n    if (name.endsWith('/') || name.split('/').includes('__MACOSX') ||\n        baseName === '.DS_Store' || baseName.startsWith('._')) {\n      ignoredFiles.push({\n        sourceFileId: source.sourceFileId,\n        fileName: name,\n        reason: 'folder or system metadata'\n      });\n      continue;\n    }\n\n    const extension = String(\n      file.fileExtension || baseName.split('.').pop() || ''\n    ).replace(/^\\./, '').toLowerCase();\n\n    const mimeType = String(file.mimeType ?? '').toLowerCase();\n    let kind;\n\n    if (videoExtensions.has(extension) || mimeType.startsWith('video/')) {\n      kind = 'video';\n    } else if (imageExtensions.has(extension) || mimeType.startsWith('image/')) {\n      kind = 'image';\n    } else {\n      ignoredFiles.push({\n        sourceFileId: source.sourceFileId,\n        fileName: name,\n        reason: 'unsupported file type'\n      });\n      continue;\n    }\n\n    const list = kind === 'video' ? videos : images;\n    const assetId = kind + '_' + String(list.length + 1).padStart(4, '0');\n\n    binary[assetId] = file;\n    list.push({\n      assetId,\n      binaryField: assetId,\n      sourceFileId: source.sourceFileId,\n      sourceBinaryField: inputField,\n      originalFileName: name,\n      extension,\n      mimeType,\n      fileSize: file.fileSize ?? null\n    });\n  }\n}\n\nif (videos.length === 0 && images.length === 0) {\n  throw new Error('No video or image files found in the source ZIPs.');\n}\n\nreturn [{\n  json: {\n    pieceFolderId: piece.pieceFolderId,\n    sourceFileIds: sourceArchives.map(source => source.sourceFileId),\n    sourceFileCount: sourceArchives.length,\n    framesPerSecond: piece.framesPerSecond,\n    cloudConvertCredits: piece.cloudConvertCredits,\n    videoCount: videos.length,\n    imageCount: images.length,\n    ignoredFileCount: ignoredFiles.length,\n    inventoryNeedsReview: ignoredFiles.some(\n      file => file.reason === 'unsupported file type'\n    ),\n    sourceArchives,\n    videos,\n    images,\n    ignoredFiles\n  },\n  binary,\n  pairedItem: items.map((_, index) => ({ item: index }))\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3536,
+        1664
+      ],
+      "id": "e7bebc37-8e92-4d7b-ae19-a7f43e372a18",
+      "name": "Inventory Piece Assets"
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst items = $input.all();\n\nif (items.length !== 1) {\n  throw new Error('Expected one inventoried piece.');\n}\n\nconst item = items[0];\nconst piece = item.json;\n\nif (piece.inventoryNeedsReview !== false) {\n  throw new Error('Review unsupported files before creating a job.');\n}\n\nif (!Array.isArray(piece.videos) || !Array.isArray(piece.images) ||\n    piece.videoCount !== piece.videos.length ||\n    piece.imageCount !== piece.images.length ||\n    piece.videoCount + piece.imageCount === 0 ||\n    piece.framesPerSecond !== 2) {\n  throw new Error('Asset inventory or frame-rate setting is invalid.');\n}\n\nconst pipelineVersion = 'aura-frames-v1';\nconst engineVersion = '9.0.1';\nconst tasks = {};\nconst uploadPlan = [];\nconst archiveInputs = [];\nconst binary = {};\nconst seenAssets = new Set();\n\nconst assets = [\n  ...piece.videos.map(asset => ({ ...asset, kind: 'video' })),\n  ...piece.images.map(asset => ({ ...asset, kind: 'image' }))\n];\n\nfor (const asset of assets) {\n  const file = item.binary?.[asset.binaryField];\n  const idPattern = new RegExp('^' + asset.kind + '_[0-9]{4,}$');\n\n  if (!idPattern.test(asset.assetId) ||\n      asset.binaryField !== asset.assetId ||\n      seenAssets.has(asset.assetId) || !file ||\n      !piece.sourceFileIds.includes(asset.sourceFileId) ||\n      !/^[a-z0-9]{1,10}$/.test(asset.extension)) {\n    throw new Error('Invalid, missing or duplicate asset: ' + asset.assetId);\n  }\n\n  seenAssets.add(asset.assetId);\n\n  const stem = asset.originalFileName.split('/').pop()\n    .replace(/\\.[^.]+$/, '')\n    .replace(/[^A-Za-z0-9_-]/g, '_')\n    .slice(0, 80) || 'original';\n\n  const uploadFileName = asset.kind === 'video'\n    ? asset.assetId + '.' + asset.extension\n    : asset.assetId + '__' + stem + '.' + asset.extension;\n\n  const importTask = 'upload-' + asset.assetId;\n\n  tasks[importTask] = { operation: 'import/upload' };\n\n  binary[asset.binaryField] = {\n    ...file,\n    fileName: uploadFileName,\n    fileExtension: asset.extension\n  };\n\n  uploadPlan.push({\n    ...asset,\n    importTask,\n    uploadFileName\n  });\n\n  if (asset.kind === 'video') {\n    const metadataTask = 'inspect-' + asset.assetId;\n    const extractTask = 'extract-' + asset.assetId;\n\n    tasks[metadataTask] = {\n      operation: 'metadata',\n      input: importTask,\n      engine: 'ffmpeg',\n      engine_version: engineVersion\n    };\n\n    const inputPath = '/input/' + importTask + '/' + uploadFileName;\n    const outputPath = '/output/' + asset.assetId + '_frame_%06d.jpg';\n\n    tasks[extractTask] = {\n      operation: 'command',\n      input: importTask,\n      engine: 'ffmpeg',\n      engine_version: engineVersion,\n      command: 'ffmpeg',\n      capture_output: true,\n      timeout: 300,\n      arguments: [\n        '-hide_banner -nostdin',\n        '-i \"' + inputPath + '\"',\n        '-map 0:v:0 -an',\n        '-vf \"fps=2\"',\n        '-c:v mjpeg -qmin 1 -q:v 1',\n        '-pix_fmt yuvj444p',\n        '\"' + outputPath + '\"'\n      ].join(' ')\n    };\n\n    archiveInputs.push(extractTask);\n  } else {\n    archiveInputs.push(importTask);\n  }\n}\n\nconst jobFingerprint = crypto.createHash('sha256').update(JSON.stringify({\n  pipelineVersion,\n  sources: piece.sourceArchives,\n  tasks,\n  uploadNames: uploadPlan.map(asset => asset.uploadFileName)\n})).digest('hex');\n\nconst outputZipFilename =\n  'AURA_reference_images_' + jobFingerprint.slice(0, 12) + '.zip';\n\ntasks['archive-assets'] = {\n  operation: 'archive',\n  input: archiveInputs,\n  output_format: 'zip',\n  filename: outputZipFilename,\n  timeout: 300\n};\n\ntasks['export-assets'] = {\n  operation: 'export/url',\n  input: 'archive-assets',\n  inline: false,\n  archive_multiple_files: false\n};\n\nreturn [{\n  json: {\n    jobSummary: {\n      jobsToCreate: 1,\n      videoCount: piece.videoCount,\n      originalImageCount: piece.imageCount,\n      filesToUpload: uploadPlan.length,\n      frameExtractionTasks: piece.videoCount,\n      totalInternalTasks: Object.keys(tasks).length,\n      outputZipFilename\n    },\n    ...piece,\n    pipelineVersion,\n    jobFingerprint,\n    uploadPlan,\n    jobPayload: {\n      tag: 'aura-frames:' + piece.pieceFolderId + ':' +\n        jobFingerprint.slice(0, 16),\n      tasks\n    }\n  },\n  binary,\n  pairedItem: { item: 0 }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3760,
+        1664
+      ],
+      "id": "0f9b7d5d-e0b3-42c7-a179-8117b9565e21",
+      "name": "Build CloudConvert Job"
+    },
+    {
+      "parameters": {
+        "url": "https://api.cloudconvert.com/v2/jobs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "filter[tag]",
+              "value": "={{ $json.jobPayload.tag }}"
+            },
+            {
+              "name": "per_page",
+              "value": "2"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        3984,
+        1664
+      ],
+      "id": "cea6ea24-165f-4cea-bc05-78cb427a69ce",
+      "name": "Find Existing CloudConvert Job",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "0vTnrwvhrOrNpmt5",
+          "name": "CloudConvert – AURA"
+        }
+      },
+      "retryOnFail": false,
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nif (items.length !== 1) {\n  throw new Error('Expected one job lookup response.');\n}\n\nconst response = items[0].json;\nconst plan = $('Build CloudConvert Job').itemMatching(0);\nconst expectedTag = plan.json.jobPayload?.tag;\n\nif (typeof expectedTag !== 'string' || !expectedTag) {\n  throw new Error('The planned job tag is missing.');\n}\n\nif (!Array.isArray(response.data) || response.links?.next !== null) {\n  throw new Error('Unexpected or paginated job lookup. Review before continuing.');\n}\n\nif (response.data.length > 1) {\n  throw new Error('Multiple matching jobs found. Review before continuing.');\n}\n\nconst needsNewJob = response.data.length === 0;\nconst existing = needsNewJob ? null : response.data[0];\n\nif (!needsNewJob) {\n  if (!existing || typeof existing.id !== 'string' || !existing.id.trim() ||\n      existing.tag !== expectedTag) {\n    throw new Error('Existing job does not match the planned piece job.');\n  }\n\n  if (!['waiting', 'processing', 'finished'].includes(existing.status)) {\n    throw new Error('Existing job failed or has an unexpected status. Review before retrying.');\n  }\n}\n\nreturn [{\n  json: {\n    ...plan.json,\n    jobDecision: {\n      needsNewJob,\n      existingJobId: existing?.id ?? null,\n      existingJobStatus: existing?.status ?? null\n    }\n  },\n  binary: plan.binary,\n  pairedItem: { item: 0 }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4208,
+        1664
+      ],
+      "id": "cf299c0e-c469-4ec9-8820-dd736e63010b",
+      "name": "Resolve CloudConvert Job"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "56ec9e3b-964f-4a5a-afa6-1bb43722c942",
+              "leftValue": "={{ $json.jobDecision.needsNewJob }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        4432,
+        1664
+      ],
+      "id": "7bb88ddd-a824-4af4-9a66-ccb8603d5f73",
+      "name": "New CloudConvert Job Needed?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.cloudconvert.com/v2/jobs",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.jobPayload }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        4832,
+        1568
+      ],
+      "id": "246ca094-68ec-4721-9ce4-424480e206f4",
+      "name": "Create CloudConvert Job",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "0vTnrwvhrOrNpmt5",
+          "name": "CloudConvert – AURA"
+        }
+      },
+      "retryOnFail": false,
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nif (items.length !== 1) {\n  throw new Error('Expected one CloudConvert job response.');\n}\n\nconst plan = $('Resolve CloudConvert Job').itemMatching(0);\nconst job = items[0].json.data;\nconst expected = plan.json.jobPayload;\nconst validStatuses = ['waiting', 'processing', 'finished'];\n\nif (!job || typeof job.id !== 'string' || !job.id.trim() ||\n    job.tag !== expected?.tag || !Array.isArray(job.tasks) ||\n    !validStatuses.includes(job.status)) {\n  throw new Error('Unexpected or failed CloudConvert job. Review before continuing.');\n}\n\nif (plan.json.jobDecision?.needsNewJob === false &&\n    job.id !== plan.json.jobDecision.existingJobId) {\n  throw new Error('The returned job ID does not match the selected existing job.');\n}\n\nconst plannedTasks = Object.entries(expected.tasks ?? {});\nconst byName = new Map();\nconst taskIds = new Set();\n\nfor (const task of job.tasks) {\n  if (!task || typeof task.name !== 'string' || byName.has(task.name) ||\n      typeof task.id !== 'string' || !task.id.trim() || taskIds.has(task.id) ||\n      task.job_id !== job.id || !validStatuses.includes(task.status)) {\n    throw new Error('Invalid, duplicate or failed job task. Review before continuing.');\n  }\n  byName.set(task.name, task);\n  taskIds.add(task.id);\n}\n\nif (!plannedTasks.length || job.tasks.length !== plannedTasks.length) {\n  throw new Error('CloudConvert task count does not match the plan.');\n}\n\nfor (const [name, definition] of plannedTasks) {\n  if (byName.get(name)?.operation !== definition.operation) {\n    throw new Error('CloudConvert task does not match the plan: ' + name);\n  }\n}\n\nconst uploads = plan.json.uploadPlan;\nconst importTasks = job.tasks.filter(task => task.operation === 'import/upload');\n\nif (!Array.isArray(uploads) || uploads.length !== importTasks.length ||\n    Object.keys(plan.binary ?? {}).length !== uploads.length) {\n  throw new Error('The upload plan or attached files are incomplete.');\n}\n\nconst uploadFields = new Set();\nconst uploadNames = new Set();\n\nfor (const asset of uploads) {\n  const file = plan.binary?.[asset.binaryField];\n  if (!file || file.fileName !== asset.uploadFileName ||\n      uploadFields.has(asset.binaryField) || uploadNames.has(asset.importTask) ||\n      byName.get(asset.importTask)?.operation !== 'import/upload') {\n    throw new Error('An upload file is missing, duplicated or mismatched.');\n  }\n  uploadFields.add(asset.binaryField);\n  uploadNames.add(asset.importTask);\n}\n\nreturn [{\n  json: {\n    submissionSummary: {\n      jobId: job.id,\n      status: job.status,\n      taskCount: job.tasks.length,\n      filesAttached: uploads.length,\n      uploadsWaiting: importTasks.filter(task => task.status === 'waiting').length\n    },\n    ...plan.json,\n    cloudConvertJobId: job.id,\n    cloudConvertJobStatus: job.status,\n    cloudConvertJob: job\n  },\n  binary: plan.binary,\n  pairedItem: { item: 0 }\n}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5056,
+        1568
+      ],
+      "id": "17a3e3ed-811f-48cf-892c-f67e3dc67872",
+      "name": "Attach CloudConvert Job"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\n\nif (items.length !== 1) {\n  throw new Error('Expected one attached piece job.');\n}\n\nconst item = items[0];\nconst piece = item.json;\nconst job = piece.cloudConvertJob;\n\nif (!job || job.id !== piece.cloudConvertJobId ||\n    job.tag !== piece.jobPayload?.tag ||\n    !['waiting', 'processing', 'finished'].includes(job.status) ||\n    !Array.isArray(job.tasks) ||\n    !Array.isArray(piece.uploadPlan) || !piece.uploadPlan.length) {\n  throw new Error('The attached job or upload plan is invalid.');\n}\n\nconst byName = new Map(job.tasks.map(task => [task.name, task]));\nconst seenFiles = new Set();\nconst seenTasks = new Set();\nconst allowedUploadUrl =\n  /^https:\\/\\/(?:[a-z0-9-]+\\.)?(?:storage|upload)\\.cloudconvert\\.com(?:\\/|$)/i;\n\nif (byName.size !== job.tasks.length ||\n    Object.keys(item.binary ?? {}).length !== piece.uploadPlan.length) {\n  throw new Error('Duplicate tasks or incomplete attached files.');\n}\n\nreturn piece.uploadPlan.map(asset => {\n  const task = byName.get(asset.importTask);\n  const file = item.binary?.[asset.binaryField];\n\n  if (!task || task.job_id !== job.id || task.operation !== 'import/upload' ||\n      !['waiting', 'processing', 'finished'].includes(task.status)) {\n    throw new Error('Upload task is not waiting. Refresh and review before retrying.');\n  }\n\n  if (!file || file.fileName !== asset.uploadFileName ||\n      !/^[A-Za-z0-9_.-]{1,160}$/.test(asset.uploadFileName) ||\n      !['video', 'image'].includes(asset.kind) ||\n      seenFiles.has(asset.binaryField) || seenTasks.has(task.id)) {\n    throw new Error('Missing, unsafe or duplicated upload file.');\n  }\n\n  const uploadRequired = task.status === 'waiting';\n  const form = uploadRequired ? task.result?.form : {url:'https://storage.cloudconvert.com/',parameters:{skip:'true'}};\n  const parameters = form?.parameters;\n\n  if (typeof form?.url !== 'string' || !allowedUploadUrl.test(form.url) ||\n      /[\\r\\n]/.test(form.url) ||\n      !parameters || typeof parameters !== 'object' ||\n      Array.isArray(parameters) || !Object.keys(parameters).length) {\n    throw new Error('Missing or unexpected CloudConvert upload form.');\n  }\n\n  for (const [name, value] of Object.entries(parameters)) {\n    if (!/^[A-Za-z0-9_.-]+$/.test(name) || name.toLowerCase() === 'file' ||\n        !['string', 'number', 'boolean'].includes(typeof value) ||\n        (typeof value === 'number' && !Number.isFinite(value))) {\n      throw new Error('Unexpected upload form field. Review before continuing.');\n    }\n  }\n\n  seenFiles.add(asset.binaryField);\n  seenTasks.add(task.id);\n\n  return {\n    json: {\n      uploadRequired,\n      uploadSummary: {\n        jobId: job.id,\n        assetId: asset.assetId,\n        kind: asset.kind,\n        fileName: asset.uploadFileName,\n        taskStatus: task.status\n      },\n      pieceFolderId: piece.pieceFolderId,\n      cloudConvertJobId: job.id,\n      assetId: asset.assetId,\n      kind: asset.kind,\n      sourceFileId: asset.sourceFileId,\n      importTask: asset.importTask,\n      importTaskId: task.id,\n      uploadFileName: asset.uploadFileName,\n      uploadUrl: form.url,\n      uploadParameters: { ...parameters }\n    },\n    binary: { file },\n    pairedItem: { item: 0 }\n  };\n});"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5280,
+        1568
+      ],
+      "id": "a7c01494-ec4c-48bd-a0f1-2e0a63b40af7",
+      "name": "Prepare CloudConvert Uploads"
+    },
+    {
+      "parameters": {
+        "options": {},
+        "batchSize": 1
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        5504,
+        1568
+      ],
+      "id": "ed3b41b5-9590-4232-97dd-3e0ffa18ed09",
+      "name": "Upload Files One at a Time"
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto = require('crypto');\nconst items = $input.all();\nif (items.length !== 1) throw new Error('Expected one file per upload.');\nconst item=items[0], data=item.json, fields=data.uploadParameters;\nif (data.uploadRequired !== true || !item.binary?.file ||\n    !/^https:\\/\\/(?:[a-z0-9-]+\\.)?(?:storage|upload)\\.cloudconvert\\.com(?:\\/|$)/i.test(data.uploadUrl) ||\n    !/^[A-Za-z0-9_.-]{1,160}$/.test(data.uploadFileName) || !fields || Array.isArray(fields)) {\n  throw new Error('Invalid native-upload context.');\n}\nconst nativeFormFields=Object.entries(fields).map(([name,value])=>{\n  if(!/^[A-Za-z0-9_.-]+$/.test(name) || name.toLowerCase()==='file' ||\n     !['string','number','boolean'].includes(typeof value) ||\n     (typeof value==='number'&&!Number.isFinite(value))) throw new Error('Invalid upload form field.');\n  return {parameterType:'formData',name,value:String(value)};\n});\nif(nativeFormFields.length!==8) throw new Error('CloudConvert changed its upload field count. Review the form before uploading; no fields will be silently omitted.');\nif(fields.Policy){\n  const policy=JSON.parse(Buffer.from(String(fields.Policy),'base64').toString('utf8'));\n  if(!Number.isFinite(Date.parse(policy.expiration)) || Date.parse(policy.expiration)<=Date.now()+60000)\n    throw new Error('Upload form is expired or about to expire. Refresh the existing job.');\n}\nconst source=await this.helpers.getBinaryDataBuffer(0,'file');\nif(!source.length) throw new Error('Empty upload file.');\nnativeFormFields.push({parameterType:'formBinaryData',name:'file',inputDataFieldName:'file'});\nreturn [{json:{...data,nativeFormFields,sourceFileBytes:source.length,\n  sourceSha256:crypto.createHash('sha256').update(source).digest('hex'),\n  expectedUploadStatusCode:Number(fields.success_action_status||201)},\n  binary:{file:item.binary.file},pairedItem:{item:0}}];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5712,
+        1888
+      ],
+      "id": "eabb2e7f-f313-4edf-bdaa-64262f7d8649",
+      "name": "Build CloudConvert Upload Body"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.uploadUrl }}",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "={{ $json.nativeFormFields[0].name }}",
+              "value": "={{ $json.nativeFormFields[0].value }}"
+            },
+            {
+              "name": "={{ $json.nativeFormFields[1].name }}",
+              "value": "={{ $json.nativeFormFields[1].value }}"
+            },
+            {
+              "name": "={{ $json.nativeFormFields[2].name }}",
+              "value": "={{ $json.nativeFormFields[2].value }}"
+            },
+            {
+              "name": "={{ $json.nativeFormFields[3].name }}",
+              "value": "={{ $json.nativeFormFields[3].value }}"
+            },
+            {
+              "name": "={{ $json.nativeFormFields[4].name }}",
+              "value": "={{ $json.nativeFormFields[4].value }}"
+            },
+            {
+              "name": "={{ $json.nativeFormFields[5].name }}",
+              "value": "={{ $json.nativeFormFields[5].value }}"
+            },
+            {
+              "name": "={{ $json.nativeFormFields[6].name }}",
+              "value": "={{ $json.nativeFormFields[6].value }}"
+            },
+            {
+              "name": "={{ $json.nativeFormFields[7].name }}",
+              "value": "={{ $json.nativeFormFields[7].value }}"
+            },
+            {
+              "parameterType": "formBinaryData",
+              "name": "file",
+              "inputDataFieldName": "file"
+            }
+          ]
+        },
+        "options": {
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "text",
+              "outputPropertyName": "uploadResponse"
+            }
+          },
+          "timeout": 300000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        5984,
+        1888
+      ],
+      "id": "72ae6f00-f195-42be-b1e1-872ff5e6c9f8",
+      "name": "Upload File to CloudConvert",
+      "retryOnFail": false,
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://api.cloudconvert.com/v2/jobs/' + encodeURIComponent($json.jobDecision.existingJobId) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "ad67a227-4b24-462b-941d-f67b749e8d9d",
+      "name": "Get Existing CloudConvert Job",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        4832,
+        1808
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "0vTnrwvhrOrNpmt5",
+          "name": "CloudConvert – AURA"
+        }
+      },
+      "retryOnFail": false,
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "jsCode": "throw new Error('Stopped: free CloudConvert credits are unavailable or the account is paying. No paid processing is authorized.');"
+      },
+      "id": "07996d37-3c7c-46c6-ae9f-f47d67f65a63",
+      "name": "Stop - Free Credits Required",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2192,
+        1904
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "2bd8c872-562c-4ccb-9c38-59e55865ed35",
+              "leftValue": "={{ $json.uploadRequired }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "bbe6a036-7ea0-4746-a2df-74ee199df4e1",
+      "name": "Upload Required?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        5728,
+        1568
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const response=$input.first().json;\nconst item=$('Build CloudConvert Upload Body').itemMatching(0);\nconst data=item.json;\nif(response.statusCode!==data.expectedUploadStatusCode) throw new Error('Upload not confirmed: HTTP '+response.statusCode);\nreturn [{json:{cloudConvertJobId:data.cloudConvertJobId,assetId:data.assetId,importTaskId:data.importTaskId,\n  fileName:data.uploadFileName,kind:data.kind,sourceSha256:data.sourceSha256,sourceFileBytes:data.sourceFileBytes,\n  uploadStatusCode:response.statusCode},pairedItem:{item:0}}];"
+      },
+      "id": "0a495697-5772-48de-a404-ac06edd698e5",
+      "name": "Confirm Upload Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6208,
+        1888
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto=require('crypto');\nconst item=$input.first(),data=item.json;\nif(data.uploadRequired!==false) throw new Error('Only accepted imports may be reused.');\nconst source=await this.helpers.getBinaryDataBuffer(0,'file');\nreturn [{json:{cloudConvertJobId:data.cloudConvertJobId,assetId:data.assetId,importTaskId:data.importTaskId,\n  fileName:data.uploadFileName,kind:data.kind,sourceSha256:crypto.createHash('sha256').update(source).digest('hex'),\n  sourceFileBytes:source.length,reusedImport:true},pairedItem:{item:0}}];"
+      },
+      "id": "09d9c4c1-c161-4754-9d98-f1ccd7edf82a",
+      "name": "Reuse Uploaded File",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6768,
+        1888
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const inputs=$input.all();\nconst attached=$('Attach CloudConvert Job').first().json;\nconst previous=inputs[0]?.json;\nconst receipts=Array.isArray(previous?.uploadReceipts)?previous.uploadReceipts:inputs.map(i=>i.json);\nif(receipts.length!==attached.uploadPlan.length || new Set(receipts.map(r=>r.assetId)).size!==receipts.length ||\n   receipts.some(r=>r.cloudConvertJobId!==attached.cloudConvertJobId || !/^[0-9a-f]{64}$/.test(r.sourceSha256)))\n  throw new Error('Upload receipt set is incomplete or mismatched.');\nconst pollAttempt=(previous?.pollAttempt||0)+1;\nif(pollAttempt>120) throw new Error('Timed out waiting for the existing job. Resume it; do not create another.');\nreturn [{json:{pieceFolderId:attached.pieceFolderId,cloudConvertJobId:attached.cloudConvertJobId,\n  jobTag:attached.jobPayload.tag,jobFingerprint:attached.jobFingerprint,\n  outputZipFilename:attached.jobSummary.outputZipFilename,uploadReceipts:receipts,pollAttempt},pairedItem:{item:0}}];"
+      },
+      "id": "6586f8a9-c06b-4d9c-8427-40ca697e77d6",
+      "name": "Prepare Job Poll",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6160,
+        752
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://api.cloudconvert.com/v2/jobs/' + encodeURIComponent($json.cloudConvertJobId) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "id": "961ea533-78c8-4aea-8a69-c60b01c6f967",
+      "name": "Get CloudConvert Job Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        6384,
+        752
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "0vTnrwvhrOrNpmt5",
+          "name": "CloudConvert – AURA"
+        }
+      },
+      "retryOnFail": false,
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "jsCode": "const context=$('Prepare Job Poll').itemMatching(0).json;\nconst job=$input.first().json.data;\nconst planned=$('Build CloudConvert Job').first().json.jobPayload.tasks;\nif(!job || job.id!==context.cloudConvertJobId || job.tag!==context.jobTag || !Array.isArray(job.tasks) ||\n   job.tasks.length!==Object.keys(planned).length || new Set(job.tasks.map(t=>t.name)).size!==job.tasks.length)\n  throw new Error('Unexpected job status response.');\nfor(const task of job.tasks){\n  if(task.job_id!==job.id || task.operation!==planned[task.name]?.operation) throw new Error('Mismatched job task.');\n  if(task.status==='error') throw new Error('CloudConvert '+task.name+': '+task.code+' '+task.message);\n}\nif(job.status==='error') throw new Error('CloudConvert job failed.');\nif(!['waiting','processing','finished'].includes(job.status)) throw new Error('Unknown job status.');\nif(job.status!=='finished') return [{json:{...context,jobFinished:false,jobStatus:job.status},pairedItem:{item:0}}];\nif(job.tasks.some(t=>t.status!=='finished')) throw new Error('Job task set has not finished.');\nconst expectedFiles=[];\nfor(const receipt of context.uploadReceipts){\n  if(receipt.kind==='image') expectedFiles.push({fileName:receipt.fileName,sha256:receipt.sourceSha256,bytes:receipt.sourceFileBytes,kind:'image'});\n  else{\n    const task=job.tasks.find(t=>t.name==='extract-'+receipt.assetId);\n    const files=task?.result?.files;\n    if(!Array.isArray(files)||!files.length) throw new Error('No frames returned for '+receipt.assetId);\n    const pattern=new RegExp('^'+receipt.assetId+'_frame_[0-9]{6,}\\\\.jpg$');\n    for(const f of files){\n      if(!pattern.test(f.filename)) throw new Error('Unexpected extracted frame name.');\n      expectedFiles.push({fileName:f.filename,kind:'frame'});\n    }\n  }\n}\nif(new Set(expectedFiles.map(f=>f.fileName)).size!==expectedFiles.length) throw new Error('Duplicate output file names.');\nconst exports=job.tasks.find(t=>t.name==='export-assets')?.result?.files;\nif(!Array.isArray(exports)||exports.length!==1||exports[0].filename!==context.outputZipFilename||\n   !/^https:\\/\\/(?:[a-z0-9-]+\\.)?(?:storage|upload)\\.cloudconvert\\.com(?:\\/|$)/i.test(exports[0].url))\n  throw new Error('Unexpected ZIP export.');\nreturn [{json:{...context,jobFinished:true,jobStatus:job.status,expectedFiles,outputUrl:exports[0].url,\n  frameCount:expectedFiles.filter(f=>f.kind==='frame').length,\n  originalImageCount:expectedFiles.filter(f=>f.kind==='image').length,\n  conversionCredits:job.tasks.reduce((s,t)=>s+(Number(t.credits)||0),0),\n  metadataTasks:job.tasks.filter(t=>t.operation==='metadata').map(t=>({name:t.name,result:t.result}))},pairedItem:{item:0}}];"
+      },
+      "id": "f9240a83-f668-42df-b82a-564a9148f67f",
+      "name": "Evaluate CloudConvert Job",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        6608,
+        752
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "98a29c6e-da09-4949-8cf8-66f96b83fc82",
+              "leftValue": "={{ $json.jobFinished }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "eb05604f-d625-427f-a857-e0bf494d95e2",
+      "name": "CloudConvert Job Finished?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        6832,
+        752
+      ]
+    },
+    {
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "id": "5780ed6a-7b3e-4d3d-b5ef-1952ab38013c",
+      "name": "Wait Before Job Poll",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        6944,
+        1072
+      ],
+      "webhookId": "ca51b4d9-da88-4b80-924f-4ad83cc04bbb"
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.outputUrl }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "outputZip"
+            }
+          },
+          "timeout": 300000
+        }
+      },
+      "id": "6c3e5b7e-2150-4139-ba30-d73bd5498ea8",
+      "name": "Download Combined Reference ZIP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        7056,
+        736
+      ],
+      "retryOnFail": false,
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto=require('crypto');\nconst esFail=m=>{throw Error(m);};\nfunction essentialArchivePreflight(bytes,maxBytes,maxEntryBytes=50*1024*1024){\n let end=-1;for(let i=bytes.length-22;i>=Math.max(0,bytes.length-65557);i--)if(bytes.readUInt32LE(i)===0x06054b50&&i+22+bytes.readUInt16LE(i+20)===bytes.length){end=i;break;}\n if(end<0||bytes.readUInt16LE(end+4)!==0||bytes.readUInt16LE(end+6)!==0)esFail('Unsupported ZIP footer or multi-volume archive.');\n const count=bytes.readUInt16LE(end+10),size=bytes.readUInt32LE(end+12),start=bytes.readUInt32LE(end+16);\n if(!count||count>2000||count===65535||start+size!==end)esFail('ZIP64/oversized or inconsistent archive.');\n let position=start,total=0;const names=new Set();\n for(let i=0;i<count;i++){\n  if(position+46>end||bytes.readUInt32LE(position)!==0x02014b50)esFail('Invalid ZIP directory.');\n  const flags=bytes.readUInt16LE(position+8),method=bytes.readUInt16LE(position+10),expanded=bytes.readUInt32LE(position+24),nameBytes=bytes.readUInt16LE(position+28),extra=bytes.readUInt16LE(position+30),comment=bytes.readUInt16LE(position+32),attributes=bytes.readUInt32LE(position+38);\n  const next=position+46+nameBytes+extra+comment;if(next>end)esFail('Truncated ZIP directory.');\n  const name=bytes.toString('utf8',position+46,position+46+nameBytes);total+=expanded;\n  if(flags&1||![0,8].includes(method)||(attributes>>>16&0xf000)===0xa000||name.startsWith('/')||/^[A-Za-z]:/.test(name)||name.includes('\\\\')||name.includes('\\0')||name.split('/').some(x=>x==='..'||x==='.')||names.has(name)||expanded>maxEntryBytes||total>maxBytes)esFail('Unsafe or over-limit source archive.');\n  names.add(name);position=next;\n }\n if(position!==end)esFail('ZIP directory coverage mismatch.');return {entryCount:count,expandedBytes:total};\n}\nconst item=$input.first();\nconst context=$('Evaluate CloudConvert Job').itemMatching(0).json;\nconst bytes=await this.helpers.getBinaryDataBuffer(0,'outputZip');\nif(bytes.length<22 || bytes.readUInt32LE(0)!==0x04034b50) throw new Error('Export is not a nonempty ZIP.');\nessentialArchivePreflight(bytes,200*1024*1024);\nconst {outputUrl,...safe}=context;\nreturn [{json:{...safe,outputZipBytes:bytes.length,outputZipMd5:crypto.createHash('md5').update(bytes).digest('hex'),\n  outputZipSha256:crypto.createHash('sha256').update(bytes).digest('hex')},\n  binary:{outputZip:{...item.binary.outputZip,fileName:context.outputZipFilename,mimeType:'application/zip',fileExtension:'zip'}},pairedItem:{item:0}}];"
+      },
+      "id": "2827c5ae-ee58-4b75-9eee-8a7959dbab2e",
+      "name": "Prepare ZIP Validation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7280,
+        736
+      ]
+    },
+    {
+      "parameters": {
+        "binaryPropertyName": "outputZip",
+        "outputPrefix": "verified_",
+        "operation": "decompress"
+      },
+      "id": "a14314f1-a58f-4dba-ba64-7c3aca233e1f",
+      "name": "Unpack Output for Verification",
+      "type": "n8n-nodes-base.compression",
+      "typeVersion": 1.1,
+      "position": [
+        7504,
+        736
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const crypto=require('crypto');\nconst context=$('Prepare ZIP Validation').itemMatching(0).json;\nconst item=$input.first();\nconst expected=new Map(context.expectedFiles.map(f=>[f.fileName,f]));\nconst seen=new Set();\nfor(const [field,file] of Object.entries(item.binary||{})){\n  if(field==='outputZip') continue;\n  const full=file.fileName;\n  if(typeof full!=='string' || /(^\\/|(^|\\/)\\.\\.(\\/|$)|\\\\|\\0)/.test(full)) throw new Error('Unsafe ZIP entry.');\n  const name=full.split('/').pop();\n  const spec=expected.get(name);\n  if(!spec||seen.has(name)) throw new Error('Unexpected or duplicate ZIP entry: '+name);\n  const bytes=await this.helpers.getBinaryDataBuffer(0,field);\n  if(spec.kind==='image'){\n    if(bytes.length!==spec.bytes || crypto.createHash('sha256').update(bytes).digest('hex')!==spec.sha256)\n      throw new Error('Original image bytes changed: '+name);\n  }else if(bytes.length<4 || bytes[0]!==255 || bytes[1]!==216 || bytes[bytes.length-2]!==255 || bytes[bytes.length-1]!==217)\n    throw new Error('Invalid JPEG frame: '+name);\n  seen.add(name);\n}\nif(seen.size!==expected.size) throw new Error('ZIP is missing expected files.');\nconst zip=$('Prepare ZIP Validation').itemMatching(0).binary.outputZip;\nconst {expectedFiles,metadataTasks,...safe}=context;\nreturn [{json:{...safe,zipVerified:true,verifiedFileCount:seen.size,originalImagesByteIdentical:true},binary:{outputZip:zip},pairedItem:{item:0}}];"
+      },
+      "id": "45336973-ac4f-4557-98b6-6c7815323749",
+      "name": "Verify Combined Reference ZIP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        7728,
+        736
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ \"'\" + $json.pieceFolderId + \"' in parents and trashed = false and name = '\" + $json.outputZipFilename + \"'\" }}"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name,size,md5Checksum,parents,mimeType),nextPageToken"
+            },
+            {
+              "name": "pageSize",
+              "value": "2"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "aa5be590-6141-497e-b2d6-9326c141678c",
+      "name": "Find Existing Output ZIP",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.5,
+      "position": [
+        7952,
+        736
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "DxuMVynJiqHaTJ6T",
+          "name": "Aura Google Drive"
+        }
+      },
+      "retryOnFail": false,
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "jsCode": "const response=$input.first().json;\nconst item=$('Verify Combined Reference ZIP').itemMatching(0),context=item.json;\nif(!Array.isArray(response.files)||response.nextPageToken||response.files.length>1) throw new Error('Output lookup is ambiguous.');\nconst existing=response.files[0];\nif(existing && (existing.name!==context.outputZipFilename||!existing.parents?.includes(context.pieceFolderId)||\n  Number(existing.size)!==context.outputZipBytes||existing.md5Checksum!==context.outputZipMd5))\n  throw new Error('An output with this name already exists but does not match. Nothing overwritten.');\nreturn [{json:{...context,outputExists:!!existing,existingOutputFile:existing||null},binary:item.binary,pairedItem:{item:0}}];"
+      },
+      "id": "80002cd2-55ea-4a40-8603-358ab69d522f",
+      "name": "Resolve Output ZIP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8176,
+        736
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "5e08e9e0-7ef1-4e36-9be1-a8c8b38353ac",
+              "leftValue": "={{ $json.outputExists }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "fc47749d-6408-47ba-b97f-22374557ee5a",
+      "name": "Output ZIP Exists?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        8400,
+        736
+      ]
+    },
+    {
+      "parameters": {
+        "inputDataFieldName": "outputZip",
+        "name": "={{ $json.outputZipFilename }}",
+        "driveId": {
+          "__rl": true,
+          "mode": "list",
+          "value": "My Drive"
+        },
+        "folderId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "={{ $json.pieceFolderId }}"
+        },
+        "options": {},
+        "operation": "upload"
+      },
+      "id": "1216aaf0-2466-4cb2-8d49-aa80a1172643",
+      "name": "Save Combined ZIP to Piece Folder",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        8624,
+        896
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "DxuMVynJiqHaTJ6T",
+          "name": "Aura Google Drive"
+        }
+      },
+      "retryOnFail": false,
+      "onError": "stopWorkflow"
+    },
+    {
+      "parameters": {
+        "jsCode": "const plan=$('Resolve Output ZIP').itemMatching(0).json;\nconst result=$input.first().json;\nconst id=plan.outputExists?plan.existingOutputFile?.id:result.id;\nif(typeof id!=='string'||!id) throw new Error('Drive did not return an output file ID.');\nreturn [{json:{status:'complete',pieceFolderId:plan.pieceFolderId,cloudConvertJobId:plan.cloudConvertJobId,\n  outputFileId:id,outputZipFilename:plan.outputZipFilename,outputZipBytes:plan.outputZipBytes,\n  outputZipMd5:plan.outputZipMd5,outputZipSha256:plan.outputZipSha256,\n  frameCount:plan.frameCount,originalImageCount:plan.originalImageCount,\n  verifiedFileCount:plan.verifiedFileCount,originalImagesByteIdentical:plan.originalImagesByteIdentical,\n  conversionCredits:plan.conversionCredits,reusedExistingOutput:plan.outputExists,\n  outputFileUrl:'https://drive.google.com/file/d/'+id+'/view'},pairedItem:{item:0}}];"
+      },
+      "id": "e7e848db-8097-4c3c-8ba9-af18ae3a0315",
+      "name": "Reference ZIP Saved",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        8848,
+        736
+      ]
+    },
+    {
+      "id": "aura-extractor-source-bytes",
+      "name": "Verify Source ZIP Bytes",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1500,
+        600
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const crypto=require('crypto');\nconst esFail=m=>{throw Error(m);};\nfunction essentialArchivePreflight(bytes,maxBytes,maxEntryBytes=50*1024*1024){\n let end=-1;for(let i=bytes.length-22;i>=Math.max(0,bytes.length-65557);i--)if(bytes.readUInt32LE(i)===0x06054b50&&i+22+bytes.readUInt16LE(i+20)===bytes.length){end=i;break;}\n if(end<0||bytes.readUInt16LE(end+4)!==0||bytes.readUInt16LE(end+6)!==0)esFail('Unsupported ZIP footer or multi-volume archive.');\n const count=bytes.readUInt16LE(end+10),size=bytes.readUInt32LE(end+12),start=bytes.readUInt32LE(end+16);\n if(!count||count>2000||count===65535||start+size!==end)esFail('ZIP64/oversized or inconsistent archive.');\n let position=start,total=0;const names=new Set();\n for(let i=0;i<count;i++){\n  if(position+46>end||bytes.readUInt32LE(position)!==0x02014b50)esFail('Invalid ZIP directory.');\n  const flags=bytes.readUInt16LE(position+8),method=bytes.readUInt16LE(position+10),expanded=bytes.readUInt32LE(position+24),nameBytes=bytes.readUInt16LE(position+28),extra=bytes.readUInt16LE(position+30),comment=bytes.readUInt16LE(position+32),attributes=bytes.readUInt32LE(position+38);\n  const next=position+46+nameBytes+extra+comment;if(next>end)esFail('Truncated ZIP directory.');\n  const name=bytes.toString('utf8',position+46,position+46+nameBytes);total+=expanded;\n  if(flags&1||![0,8].includes(method)||(attributes>>>16&0xf000)===0xa000||name.startsWith('/')||/^[A-Za-z]:/.test(name)||name.includes('\\\\')||name.includes('\\0')||name.split('/').some(x=>x==='..'||x==='.')||names.has(name)||expanded>maxEntryBytes||total>maxBytes)esFail('Unsafe or over-limit source archive.');\n  names.add(name);position=next;\n }\n if(position!==end)esFail('ZIP directory coverage mismatch.');return {entryCount:count,expandedBytes:total};\n}\nconst items=$input.all();\nfor(let i=0;i<items.length;i++){\n const bytes=await this.helpers.getBinaryDataBuffer(i,'sourceZip'),source=items[i].json.sourceFileMetadata;\n if(bytes.length!==Number(source.size)||crypto.createHash('md5').update(bytes).digest('hex')!==source.md5Checksum)throw Error('Source ZIP bytes do not match Drive metadata.');\n essentialArchivePreflight(bytes,1024*1024*1024,512*1024*1024);\n}\nreturn items;"
+      }
+    },
+    {
+      "id": "aura-extractor-source-recheck",
+      "name": "Recheck Source ZIP Metadata",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1720,
+        600
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "DxuMVynJiqHaTJ6T",
+          "name": "Aura Google Drive"
+        }
+      },
+      "retryOnFail": false,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "url": "={{ 'https://www.googleapis.com/drive/v3/files/' + $json.sourceFileId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": false,
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "id,name,mimeType,parents,trashed,size,md5Checksum,version,capabilities/canDownload"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 300000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "aura-extractor-source-confirm",
+      "name": "Confirm Unchanged Source ZIP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1940,
+        600
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const items=$input.all();\nreturn items.map((item,index)=>{const original=$('Verify Source ZIP Bytes').itemMatching(index),a=original.json.sourceFileMetadata,b=item.json;\n if(['id','name','mimeType','size','md5Checksum','version'].some(k=>String(a[k])!==String(b[k]))||JSON.stringify(a.parents)!==JSON.stringify(b.parents)||b.trashed!==false)throw Error('Source ZIP changed during download. No conversion was submitted.');\n return {json:original.json,binary:original.binary,pairedItem:{item:index}};});"
+      }
+    },
+    {
+      "id": "aura-extractor-output-readback",
+      "name": "Verify Saved ZIP Metadata",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        9000,
+        900
+      ],
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "DxuMVynJiqHaTJ6T",
+          "name": "Aura Google Drive"
+        }
+      },
+      "retryOnFail": false,
+      "onError": "stopWorkflow",
+      "parameters": {
+        "url": "={{ 'https://www.googleapis.com/drive/v3/files/' + $json.outputFileId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": false,
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "fields",
+              "value": "id,name,mimeType,parents,trashed,size,md5Checksum,version,capabilities/canDownload"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 300000,
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "aura-extractor-output-confirm",
+      "name": "Confirm Saved Combined ZIP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        9240,
+        900
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const expected=$('Reference ZIP Saved').itemMatching(0).json,actual=$input.first().json;\nif(actual.id!==expected.outputFileId||actual.name!==expected.outputZipFilename||actual.mimeType!=='application/zip'||actual.trashed!==false||actual.parents?.length!==1||actual.parents[0]!==expected.pieceFolderId||Number(actual.size)!==expected.outputZipBytes||actual.md5Checksum!==expected.outputZipMd5)throw Error('Saved combined ZIP failed Drive readback. Do not rerun conversion.');\nreturn [{json:{...expected,savedZipReadbackVerified:true},pairedItem:{item:0}}];"
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Check CloudConvert Credits": {
+      "main": [
+        [
+          {
+            "node": "Free Credits Available?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Receive Piece Input": {
+      "main": [
+        [
+          {
+            "node": "Validate Piece Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Piece Input": {
+      "main": [
+        [
+          {
+            "node": "Check CloudConvert Credits",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Free Credits Available?": {
+      "main": [
+        [
+          {
+            "node": "Restore Piece Context",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stop - Free Credits Required",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Piece Context": {
+      "main": [
+        [
+          {
+            "node": "Prepare Source Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Source Files": {
+      "main": [
+        [
+          {
+            "node": "Get Source File Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Source File Metadata": {
+      "main": [
+        [
+          {
+            "node": "Validate Source Files",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Source Files": {
+      "main": [
+        [
+          {
+            "node": "Download Source ZIP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Source ZIP": {
+      "main": [
+        [
+          {
+            "node": "Verify Source ZIP Bytes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Unpack Source ZIP": {
+      "main": [
+        [
+          {
+            "node": "Inventory Piece Assets",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Inventory Piece Assets": {
+      "main": [
+        [
+          {
+            "node": "Build CloudConvert Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build CloudConvert Job": {
+      "main": [
+        [
+          {
+            "node": "Find Existing CloudConvert Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Existing CloudConvert Job": {
+      "main": [
+        [
+          {
+            "node": "Resolve CloudConvert Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve CloudConvert Job": {
+      "main": [
+        [
+          {
+            "node": "New CloudConvert Job Needed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "New CloudConvert Job Needed?": {
+      "main": [
+        [
+          {
+            "node": "Create CloudConvert Job",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get Existing CloudConvert Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create CloudConvert Job": {
+      "main": [
+        [
+          {
+            "node": "Attach CloudConvert Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attach CloudConvert Job": {
+      "main": [
+        [
+          {
+            "node": "Prepare CloudConvert Uploads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare CloudConvert Uploads": {
+      "main": [
+        [
+          {
+            "node": "Upload Files One at a Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Files One at a Time": {
+      "main": [
+        [
+          {
+            "node": "Prepare Job Poll",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Upload Required?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build CloudConvert Upload Body": {
+      "main": [
+        [
+          {
+            "node": "Upload File to CloudConvert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Existing CloudConvert Job": {
+      "main": [
+        [
+          {
+            "node": "Attach CloudConvert Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload Required?": {
+      "main": [
+        [
+          {
+            "node": "Build CloudConvert Upload Body",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Reuse Uploaded File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upload File to CloudConvert": {
+      "main": [
+        [
+          {
+            "node": "Confirm Upload Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirm Upload Response": {
+      "main": [
+        [
+          {
+            "node": "Upload Files One at a Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reuse Uploaded File": {
+      "main": [
+        [
+          {
+            "node": "Upload Files One at a Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Job Poll": {
+      "main": [
+        [
+          {
+            "node": "Get CloudConvert Job Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get CloudConvert Job Status": {
+      "main": [
+        [
+          {
+            "node": "Evaluate CloudConvert Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate CloudConvert Job": {
+      "main": [
+        [
+          {
+            "node": "CloudConvert Job Finished?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "CloudConvert Job Finished?": {
+      "main": [
+        [
+          {
+            "node": "Download Combined Reference ZIP",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait Before Job Poll",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait Before Job Poll": {
+      "main": [
+        [
+          {
+            "node": "Prepare Job Poll",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download Combined Reference ZIP": {
+      "main": [
+        [
+          {
+            "node": "Prepare ZIP Validation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare ZIP Validation": {
+      "main": [
+        [
+          {
+            "node": "Unpack Output for Verification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Unpack Output for Verification": {
+      "main": [
+        [
+          {
+            "node": "Verify Combined Reference ZIP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Combined Reference ZIP": {
+      "main": [
+        [
+          {
+            "node": "Find Existing Output ZIP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Find Existing Output ZIP": {
+      "main": [
+        [
+          {
+            "node": "Resolve Output ZIP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Output ZIP": {
+      "main": [
+        [
+          {
+            "node": "Output ZIP Exists?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Output ZIP Exists?": {
+      "main": [
+        [
+          {
+            "node": "Reference ZIP Saved",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Save Combined ZIP to Piece Folder",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Combined ZIP to Piece Folder": {
+      "main": [
+        [
+          {
+            "node": "Reference ZIP Saved",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Source ZIP Bytes": {
+      "main": [
+        [
+          {
+            "node": "Recheck Source ZIP Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Recheck Source ZIP Metadata": {
+      "main": [
+        [
+          {
+            "node": "Confirm Unchanged Source ZIP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Confirm Unchanged Source ZIP": {
+      "main": [
+        [
+          {
+            "node": "Unpack Source ZIP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reference ZIP Saved": {
+      "main": [
+        [
+          {
+            "node": "Verify Saved ZIP Metadata",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Saved ZIP Metadata": {
+      "main": [
+        [
+          {
+            "node": "Confirm Saved Combined ZIP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timezone": "Asia/Beirut"
+  },
+  "versionId": "42a3cf83-c2b3-40e9-890d-ddf09592e1a2",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "e63fdda36db6f938b08488f118363a6fd2a9c05de12c43fd9bb6c2525afd24c8"
+  },
+  "nodeGroups": [],
+  "id": "D8QQZzhw903FrcuO",
+  "tags": []
+}

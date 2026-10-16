@@ -1,5 +1,11 @@
 # AURA creator candidate selection
 
+Historical design record. The [current README](../README.md) and
+[whole-project test guide](End-to-End-Testing.md) supersede the early ZIP-deletion
+instructions below. Keep evidence through human Designer approval. DEV 11 performs
+separately enabled final cleanup and holds purge for 48 real hours from verified Trash.
+The separate CreatorRejected partition is outside that final-piece cleanup.
+
 Status: implemented with 27 passing offline tests, 14 October 2026. The updated
 creator website is deployed as version 4. New routing and ZIP-cleanup drafts are saved
 in the new n8n project and remain unpublished; no real Drive writes or deletions were run.

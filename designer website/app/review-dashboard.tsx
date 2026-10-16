@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 type ProductImage = { id: string; name: string; url: string };
-type Piece = { pieceFolderId: string; pieceName: string; images: ProductImage[] };
+type Piece = { pieceFolderId: string; pieceName: string; reviewRevision: string; images: ProductImage[] };
 type Decision = 'good' | 'no_good';
 
 const viewLabels = ['Front', 'Back', 'Three-quarter', 'Detail'];
@@ -66,7 +66,7 @@ export default function ReviewDashboard({
       const response = await fetch('/api/decision', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ pieceFolderId: piece.pieceFolderId, decision }),
+        body: JSON.stringify({ pieceFolderId: piece.pieceFolderId, decision, reviewRevision: piece.reviewRevision }),
       });
       const payload = (await response.json()) as {
         success?: boolean;

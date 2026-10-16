@@ -1,5 +1,21 @@
 # AURA Designer Review Website
 
+Updated **16 October 2026**, deployed version **4**. Use **DEV 11** as the backend;
+it replaces DEV 05 on the existing authenticated Designer webhook paths.
+The pieces endpoint preserves `reviewRevision`, the browser echoes it in its decision,
+and the server derives reviewer identity from the signed-in ChatGPT user. Missing or
+stale revisions fail validation. Cleanup and purge remain separately disabled.
+
+Server endpoint settings:
+
+```text
+N8N_PIECES_URL=https://karimkhalil07.app.n8n.cloud/webhook/designer-review/pieces
+N8N_DECISION_URL=https://karimkhalil07.app.n8n.cloud/webhook/designer-review/decision
+```
+
+Keep Basic Auth secrets server-side. Private page access and private Drive image
+delivery must both pass the live test. See the root README and the whole-project test guide.
+
 This folder contains the complete source for the private designer review dashboard.
 
 The website:

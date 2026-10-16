@@ -1,5 +1,10 @@
 # AURA API automation migration
 
+Historical record. The [current README](../README.md) and
+[whole-project test guide](End-to-End-Testing.md) supersede the status and early-cleanup
+instructions below. DEV 10 supplies the four-skill runtime; DEV 11 owns Designer approval
+and separately enabled Trash/48-hour purge. DEV 09 must remain inactive.
+
 Status: migration in progress, 14 October 2026. Candidate-selection routing and gated
 ZIP cleanup are implemented locally and saved as unpublished n8n drafts. The creator
 Site update is deployed as version 4; all three Sites remain privately published.

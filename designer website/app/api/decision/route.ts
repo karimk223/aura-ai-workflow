@@ -13,9 +13,11 @@ export async function POST(request: NextRequest) {
   const body = (await request.json()) as {
     pieceFolderId?: string;
     decision?: string;
+    reviewRevision?: string;
   };
 
-  if (!body.pieceFolderId || !['good', 'no_good'].includes(body.decision ?? '')) {
+  if (!body.pieceFolderId || !['good', 'no_good'].includes(body.decision ?? '') ||
+      !/^[a-f0-9]{64}$/.test(body.reviewRevision ?? '')) {
     return NextResponse.json(
       { success: false, error: 'Invalid designer decision.' },
       { status: 400 },
@@ -25,6 +27,11 @@ export async function POST(request: NextRequest) {
   const endpoint = process.env.N8N_DECISION_URL;
   const username = process.env.N8N_BASIC_USERNAME;
   const password = process.env.N8N_BASIC_PASSWORD;
+
+  // Identity comes from the authenticated server context, never browser JSON.
+  if (!user) {
+    return NextResponse.json({ success: false, error: 'Sign in before submitting a designer approval.' }, { status: 401 });
+  }
 
   if (!endpoint || !username || !password) {
     if (process.env.NODE_ENV !== 'production') {
@@ -43,7 +50,8 @@ export async function POST(request: NextRequest) {
         Authorization: `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify({ pieceFolderId: body.pieceFolderId, decision: body.decision,
+        reviewRevision: body.reviewRevision, reviewerIdentity: `chatgpt:${user.userId}` }),
     });
     const payload = (await response.json()) as {
       success?: boolean;

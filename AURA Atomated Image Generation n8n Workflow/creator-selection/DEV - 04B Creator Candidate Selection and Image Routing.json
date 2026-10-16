@@ -167,9 +167,11 @@
       },
       "credentials": {
         "googleDriveOAuth2Api": {
+          "id": "DxuMVynJiqHaTJ6T",
           "name": "Aura Google Drive"
         }
-      }
+      },
+      "retryOnFail": false
     },
     {
       "id": "aura-selection-draft-8",
@@ -854,9 +856,7 @@
         "sendQuery": true,
         "specifyQuery": "json",
         "jsonQuery": "={{ JSON.stringify($json.command.query || {}) }}",
-        "sendBody": "={{ $json.command.body !== undefined }}",
-        "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify($json.command.body || {}) }}",
+        "sendBody": false,
         "options": {
           "timeout": 30000,
           "response": {
@@ -870,10 +870,12 @@
       },
       "credentials": {
         "googleDriveOAuth2Api": {
+          "id": "DxuMVynJiqHaTJ6T",
           "name": "Aura Google Drive"
         }
       },
-      "onError": "continueRegularOutput"
+      "onError": "continueRegularOutput",
+      "retryOnFail": false
     },
     {
       "id": "aura-routing-223",
@@ -1012,6 +1014,79 @@
         "width": 1100,
         "height": 300,
         "content": "# Creator image routing\nKeep unpublished until the user requests testing. Four selected candidates become the designer root; other candidates move to a separate rejected piece archive. References follow the original piece, which moves last. Root final copies are preserved under _run/final_copies. A conditional data-table mutex serializes writes and durable journals resume the SAME selection. Hard interruption leaves the lock held: terminate/check the original execution before resetting it. ZIP cleanup is a separate post-generator/reviewer workflow."
+      }
+    },
+    {
+      "id": "aura-routing-222-with-body",
+      "name": "Execute Verified Drive Step With Body",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4400,
+        -310
+      ],
+      "parameters": {
+        "method": "={{ $json.command.method }}",
+        "url": "={{ $json.command.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "specifyQuery": "json",
+        "jsonQuery": "={{ JSON.stringify($json.command.query || {}) }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.command.body) }}",
+        "options": {
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "responseFormat": "json",
+              "fullResponse": true,
+              "neverError": true
+            }
+          }
+        },
+        "contentType": "json"
+      },
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "DxuMVynJiqHaTJ6T",
+          "name": "Aura Google Drive"
+        }
+      },
+      "onError": "continueRegularOutput",
+      "retryOnFail": false
+    },
+    {
+      "id": "aura-creator-body-gate",
+      "name": "Execute Verified Drive Step Has Body?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4180,
+        -130
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.command.body !== undefined && $json.command.body !== null && ![\"GET\",\"HEAD\"].includes(String($json.command.method).toUpperCase()) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
       }
     }
   ],
@@ -1384,7 +1459,7 @@
       "main": [
         [
           {
-            "node": "Execute Verified Drive Step",
+            "node": "Execute Verified Drive Step Has Body?",
             "type": "main",
             "index": 0
           }
@@ -1452,10 +1527,40 @@
           }
         ]
       ]
+    },
+    "Execute Verified Drive Step With Body": {
+      "main": [
+        [
+          {
+            "node": "Verify and Record Drive Step",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Verified Drive Step Has Body?": {
+      "main": [
+        [
+          {
+            "node": "Execute Verified Drive Step With Body",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute Verified Drive Step",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
-    "executionOrder": "v1"
+    "executionOrder": "v1",
+    "timezone": "Asia/Beirut"
   },
   "pinData": {},
   "tags": []
