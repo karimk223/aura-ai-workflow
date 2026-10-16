@@ -1,0 +1,1554 @@
+{
+  "name": "DEV - 04B Creator Candidate Selection and Image Routing",
+  "nodes": [
+    {
+      "parameters": {
+        "path": "creator-review/candidates",
+        "authentication": "basicAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "6e859acf-8dbd-40e9-802c-ddb18c15177c",
+      "name": "Get Creator Candidates — DRAFT",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        96,
+        1296
+      ],
+      "webhookId": "f88361a4-cead-471c-a6db-08ae103975f4",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "TA2THFyVEqUQtcda",
+          "name": "AURA Designer Review"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const { createHash } = require('crypto');\nconst VIEWS = ['front', 'back', 'three_quarter_front', 'detail_collage'];\nconst SELECTION_PROTOCOL = 'aura-creator-selection/v1';\nfunction jsonObject(value) {\n    if (!value || typeof value !== 'object' || Array.isArray(value))\n        throw new Error('Expected an object.');\n    return value;\n}\nfunction id(value) {\n    if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{1,256}$/.test(value))\n        throw new Error('Invalid file or piece ID.');\n    return value;\n}\nfunction revision(value) {\n    if (typeof value !== 'string' || !value.trim() || value.length > 2000 || /[\\x00-\\x1f]/.test(value)) {\n        throw new Error('Missing or invalid candidate revision. Refresh the queue.');\n    }\n    return value;\n}\nfunction parseSelectionRequest(value) {\n    const body = jsonObject(value);\n    if (body.protocol !== SELECTION_PROTOCOL)\n        throw new Error('The four-view selection format is required.');\n    const input = jsonObject(body.selections);\n    if (Object.keys(input).length !== VIEWS.length || Object.keys(input).some((key) => !VIEWS.includes(key))) {\n        throw new Error('Select exactly one image for each of the four views.');\n    }\n    const selections = Object.fromEntries(VIEWS.map((view) => [view, id(input[view])]));\n    if (new Set(Object.values(selections)).size !== VIEWS.length)\n        throw new Error('Each view needs a different image.');\n    return { protocol: SELECTION_PROTOCOL, pieceFolderId: id(body.pieceFolderId), reviewRevision: revision(body.reviewRevision), selections };\n}\nconst STAGES = Object.freeze({\n  queue: '1O-kkEwshBXZ8AYVzPf6N7h0njySVri1V',\n  approved: '1LQzu9HFblegSGbDCurmeYZ1OrNJwJp0c',\n  rejected: '1d2vIe5wh3ysjuvK0Q4tz0qZ16-HMl1DL',\n});\nfunction startTraversal(mode, request) {\n  if (!['queue', 'plan', 'cleanup'].includes(mode)) throw new Error('Unknown traversal mode.');\n  let selection;\n  if (mode === 'plan') {\n    try { selection = parseSelectionRequest(request); }\n    catch (error) { return { mode, done: true, status: 400, error: error.message }; }\n  }\n  if (mode === 'cleanup') {\n    if (!request || !/^[A-Za-z0-9_-]{1,256}$/.test(request.pieceFolderId)) return {mode,done:true,status:400,error:'Invalid cleanup piece.'};\n    selection = {pieceFolderId:request.pieceFolderId};\n  }\n  return { mode, selection, todo: [{ id: STAGES.queue, kind: 'queue', depth: 0 }], current: null,\n    files: [], seenFolders: [STAGES.queue], pageTokens: [], pageToken: '', requestCount: 0, done: false };\n}\n// AURA_NODE_BODY\nreturn [{ json: startTraversal('queue') }];"
+      },
+      "id": "ecee4f7c-10ff-4088-8ccb-96dc659b6008",
+      "name": "Start Candidate Queue Read",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        336,
+        1296
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "creator-review/selection",
+        "authentication": "basicAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "e1b9255b-ac6a-438d-91a4-1b8b85a6b7f0",
+      "name": "Submit Four Creator Views",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        96,
+        1568
+      ],
+      "webhookId": "e526abd7-241d-4d03-b37f-5b17360662ec",
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "TA2THFyVEqUQtcda",
+          "name": "AURA Designer Review"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "continue-read",
+              "leftValue": "={{ !$json.done }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "8169ab7d-12dc-4163-b4d0-fcedfe799de9",
+      "name": "More Folder Pages?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        576,
+        1296
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const { createHash } = require('crypto');\nfunction id(value) {\n    if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{1,256}$/.test(value))\n        throw new Error('Invalid file or piece ID.');\n    return value;\n}\nfunction prepareFolderPage(state) {\n  const next = JSON.parse(JSON.stringify(state));\n  if (next.done) throw new Error('Traversal already complete.');\n  if (!next.current) {\n    next.current = next.todo.shift(); next.pageToken = ''; next.pageTokens = [];\n  }\n  if (!next.current || !/^[A-Za-z0-9_-]{1,256}$/.test(next.current.id)) throw new Error('Invalid traversal folder.');\n  next.requestCount += 1;\n  return next;\n}\n// AURA_NODE_BODY\nreturn [{ json: prepareFolderPage($input.first().json) }];"
+      },
+      "id": "ed6e8d87-1a0b-434c-b501-b57fc72bb8d8",
+      "name": "Prepare Folder Page",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        1168
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ \"'\" + $json.current.id + \"' in parents and trashed = false\" }}"
+            },
+            {
+              "name": "fields",
+              "value": "nextPageToken,incompleteSearch,files(id,name,mimeType,parents,trashed,modifiedTime,md5Checksum,appProperties)"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "pageToken",
+              "value": "={{ $json.pageToken || \"\" }}"
+            },
+            {
+              "name": "spaces",
+              "value": "drive"
+            },
+            {
+              "name": "corpora",
+              "value": "user"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "6e0155be-93c5-4a8c-b0b7-ed9486279dfc",
+      "name": "Read Drive Children — GET only",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1040,
+        1168
+      ],
+      "retryOnFail": false,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "DxuMVynJiqHaTJ6T",
+          "name": "Aura Google Drive"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const { createHash } = require('crypto');\nconst VIEWS = ['front', 'back', 'three_quarter_front', 'detail_collage'];\nfunction id(value) {\n    if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{1,256}$/.test(value))\n        throw new Error('Invalid file or piece ID.');\n    return value;\n}\nconst DRIVE_FOLDER = 'application/vnd.google-apps.folder';\nconst MAX_READ_REQUESTS = 1000, MAX_METADATA_FILES = 20000, MAX_DEPTH = 24;\nfunction collectFolderPage(state, response) {\n  const next = JSON.parse(JSON.stringify(state));\n  try {\n    if (!response || !Array.isArray(response.files) || response.incompleteSearch) throw new Error('Incomplete Drive metadata response.');\n    const known = new Set(next.files.map((file) => file.id));\n    const current = next.current;\n    for (const file of response.files) {\n      if (!file.id || file.trashed || !file.parents?.includes(current.id) || known.has(file.id)) throw new Error('Drive snapshot changed or contains ambiguous metadata.');\n      known.add(file.id); next.files.push(file);\n      if (file.mimeType !== DRIVE_FOLDER) continue;\n      let kind;\n      if (current.kind === 'queue' && (next.mode === 'queue' || file.id === next.selection.pieceFolderId)) kind = 'piece';\n      else if (current.kind === 'piece' && file.name === '04_PRODUCT_IMAGE_OUTPUTS') kind = 'outputs';\n      else if (current.kind === 'outputs' && file.name === '_run') kind = 'run';\n      else if (current.kind === 'run' && file.name === 'candidates') kind = 'candidates';\n      else if (current.kind === 'candidates' && VIEWS.includes(file.name)) kind = 'view';\n      else if (current.kind === 'view' || current.kind === 'descendant') kind = 'descendant';\n      if (!kind) continue;\n      if (next.seenFolders.includes(file.id)) throw new Error('Duplicate or cyclic folder traversal.');\n      if (current.depth + 1 > MAX_DEPTH) throw new Error('Candidate ancestry exceeds the depth safety limit.');\n      next.seenFolders.push(file.id); next.todo.push({ id: file.id, kind, depth: current.depth + 1 });\n    }\n    if (next.files.length > MAX_METADATA_FILES) throw new Error('Queue exceeds the metadata safety limit; no partial queue returned.');\n    if (response.nextPageToken) {\n      if (typeof response.nextPageToken !== 'string' || next.pageTokens.includes(response.nextPageToken)) throw new Error('Invalid or repeated Drive page token.');\n      next.pageTokens.push(response.nextPageToken); next.pageToken = response.nextPageToken;\n    } else {\n      next.current = null; next.pageToken = ''; next.pageTokens = [];\n    }\n    next.done = !next.current && next.todo.length === 0;\n    if (!next.done && next.requestCount >= MAX_READ_REQUESTS) throw new Error('Queue read budget exceeded; no partial queue returned.');\n  } catch (error) { next.done = true; next.status = 502; next.error = error.message; }\n  return next;\n}\n// AURA_NODE_BODY\nconst state = $('Prepare Folder Page').first(0, $runIndex).json;\nreturn [{ json: collectFolderPage(state, $input.first().json) }];"
+      },
+      "id": "d64a53b1-2f96-48b7-8d5c-7ea943a27200",
+      "name": "Collect Page and Queue Descendants",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        1168
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const { createHash } = require('crypto');\nconst VIEWS = ['front', 'back', 'three_quarter_front', 'detail_collage'];\nconst VIEW_LABELS = {\n    front: 'Front', back: 'Back', three_quarter_front: 'Three-quarter front', detail_collage: 'Detail collage',\n};\nconst SELECTION_PROTOCOL = 'aura-creator-selection/v1';\nconst CANDIDATE_ROOT = '04_PRODUCT_IMAGE_OUTPUTS/_run/candidates';\nfunction jsonObject(value) {\n    if (!value || typeof value !== 'object' || Array.isArray(value))\n        throw new Error('Expected an object.');\n    return value;\n}\nfunction id(value) {\n    if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{1,256}$/.test(value))\n        throw new Error('Invalid file or piece ID.');\n    return value;\n}\nfunction revision(value) {\n    if (typeof value !== 'string' || !value.trim() || value.length > 2000 || /[\\x00-\\x1f]/.test(value)) {\n        throw new Error('Missing or invalid candidate revision. Refresh the queue.');\n    }\n    return value;\n}\nfunction parseSelectionRequest(value) {\n    const body = jsonObject(value);\n    if (body.protocol !== SELECTION_PROTOCOL)\n        throw new Error('The four-view selection format is required.');\n    const input = jsonObject(body.selections);\n    if (Object.keys(input).length !== VIEWS.length || Object.keys(input).some((key) => !VIEWS.includes(key))) {\n        throw new Error('Select exactly one image for each of the four views.');\n    }\n    const selections = Object.fromEntries(VIEWS.map((view) => [view, id(input[view])]));\n    if (new Set(Object.values(selections)).size !== VIEWS.length)\n        throw new Error('Each view needs a different image.');\n    return { protocol: SELECTION_PROTOCOL, pieceFolderId: id(body.pieceFolderId), reviewRevision: revision(body.reviewRevision), selections };\n}\nfunction validatePiece(value) {\n    const raw = jsonObject(value);\n    if (typeof raw.pieceName !== 'string' || !raw.pieceName.trim() || !Array.isArray(raw.images)) {\n        throw new Error('Invalid candidate queue response.');\n    }\n    if (raw.images.length > 12)\n        throw new Error('A piece cannot have more than twelve candidates.');\n    const images = raw.images.map((value) => {\n        const image = jsonObject(value);\n        const view = image.view;\n        if (!VIEWS.includes(view) || typeof image.name !== 'string' || !image.name.trim()\n            || typeof image.url !== 'string' || typeof image.path !== 'string'\n            || !Number.isInteger(image.attempt) || Number(image.attempt) < 1 || Number(image.attempt) > 3) {\n            throw new Error('A candidate has an invalid view, attempt, or image record.');\n        }\n        const prefix = `${CANDIDATE_ROOT}/${view}/`;\n        if (!image.path.startsWith(prefix) || image.path.split('/').some((part) => !part || part === '.' || part === '..')) {\n            throw new Error('Only images inside the four candidate-view folders can be reviewed.');\n        }\n        if (!image.url.startsWith('/preview-')) {\n            try {\n                if (new URL(image.url).protocol !== 'https:')\n                    throw new Error();\n            }\n            catch {\n                throw new Error('Invalid candidate image URL.');\n            }\n        }\n        if (image.aiReview !== undefined && !['pass', 'fail', 'not_available'].includes(String(image.aiReview))) {\n            throw new Error('Invalid candidate review status.');\n        }\n        return { id: id(image.id), name: image.name, url: image.url, view, attempt: Number(image.attempt), path: image.path,\n            ...(image.aiReview ? { aiReview: image.aiReview } : {}) };\n    });\n    if (new Set(images.map((image) => image.id)).size !== images.length)\n        throw new Error('Duplicate candidate file IDs.');\n    if (raw.issues !== undefined && (!Array.isArray(raw.issues) || raw.issues.some((issue) => typeof issue !== 'string'))) {\n        throw new Error('Invalid candidate warnings.');\n    }\n    const issues = [...(raw.issues ?? [])];\n    for (const view of VIEWS) {\n        const group = images.filter((image) => image.view === view);\n        if (group.length > 3 || new Set(group.map((image) => image.attempt)).size !== group.length) {\n            throw new Error(`Invalid attempt pool for ${VIEW_LABELS[view]}.`);\n        }\n        if (group.length === 0)\n            issues.push(`${VIEW_LABELS[view]} has no candidates yet.`);\n    }\n    return { pieceFolderId: id(raw.pieceFolderId), pieceName: raw.pieceName,\n        reviewRevision: revision(raw.reviewRevision), images, issues: [...new Set(issues)] };\n}\nfunction selectionIsComplete(piece, selections) {\n    return piece.issues.length === 0 && VIEWS.every((view) => piece.images.some((image) => image.view === view && image.id === selections[view]))\n        && new Set(VIEWS.map((view) => selections[view])).size === VIEWS.length;\n}\nconst STAGES = Object.freeze({\n  queue: '1O-kkEwshBXZ8AYVzPf6N7h0njySVri1V',\n  approved: '1LQzu9HFblegSGbDCurmeYZ1OrNJwJp0c',\n  rejected: '1d2vIe5wh3ysjuvK0Q4tz0qZ16-HMl1DL',\n});\nconst FOLDER = 'application/vnd.google-apps.folder';\nconst STEMS = { front: '01_front', back: '02_back', three_quarter_front: '03_three-quarter-front', detail_collage: '04_material-craftsmanship-collage' };\nconst hash = (value) => createHash('sha256').update(JSON.stringify(value)).digest('hex');\nfunction indexCandidatePool(piece, files) {\n  if (piece.mimeType !== FOLDER || !piece.parents?.includes(STAGES.queue) || piece.trashed) throw new Error('Piece is not awaiting creator review.');\n  if (new Set(files.map((file) => file.id)).size !== files.length) throw new Error('Duplicate Drive snapshot IDs.');\n  const entries = files.filter((file) => !file.trashed);\n  const children = (parentId) => entries.filter((file) => file.parents?.includes(parentId));\n  const oneFolder = (parentId, name) => {\n    const matches = children(parentId).filter((file) => file.name === name && file.mimeType === FOLDER);\n    if (matches.length !== 1) throw new Error(`Expected exactly one ${name} folder under ${parentId}.`);\n    return matches[0];\n  };\n  const outputs = oneFolder(piece.id, '04_PRODUCT_IMAGE_OUTPUTS');\n  const run = oneFolder(outputs.id, '_run');\n  const candidates = oneFolder(run.id, 'candidates');\n  const issues = [];\n  const pool = [];\n  const visited = new Set();\n  const descend = (parentId, path, view, ancestors = new Set()) => {\n    if (ancestors.has(parentId)) throw new Error('Cyclic candidate folder ancestry.');\n    const chain = new Set([...ancestors, parentId]);\n    for (const file of children(parentId)) {\n      if (file.parents.length !== 1) throw new Error('Ambiguous candidate ancestry.');\n      if (visited.has(file.id)) throw new Error('A candidate appears in multiple view trees.');\n      visited.add(file.id);\n      const filePath = `${path}/${file.name}`;\n      if (file.mimeType === FOLDER) descend(file.id, filePath, view, chain);\n      else if (file.mimeType?.startsWith('image/')) pool.push({ file, view, path: filePath });\n      else if (file.mimeType === 'application/vnd.google-apps.shortcut') issues.push(`Shortcuts are not accepted as candidates: ${file.name}`);\n    }\n  };\n  for (const view of VIEWS) {\n    const group = oneFolder(candidates.id, view);\n    descend(group.id, `${CANDIDATE_ROOT}/${view}`, view);\n  }\n  if (children(candidates.id).some((file) => !VIEWS.includes(file.name))) issues.push('Unexpected files or view folders in candidates.');\n  const images = VIEWS.flatMap((view) => {\n    const group = pool.filter((entry) => entry.view === view).sort((a, b) => a.path.localeCompare(b.path) || a.file.id.localeCompare(b.file.id));\n    if (group.length > 3) throw new Error(`More than three ${view} candidate images.`);\n    return group.map(({ file, path }, index) => ({\n      id: file.id, name: file.name, url: `https://drive.google.com/thumbnail?id=${encodeURIComponent(file.id)}&sz=w1600`, view,\n      attempt: file.appProperties?.auraAttempt === undefined ? index + 1 : Number(file.appProperties.auraAttempt), path,\n      aiReview: ['pass', 'fail'].includes(file.appProperties?.auraAIReview) ? file.appProperties.auraAIReview : 'not_available',\n    }));\n  });\n  const revision = hash({ piece: [piece.id, piece.parents, piece.modifiedTime ?? null],\n    roots: [outputs.id, run.id, candidates.id],\n    images: pool.map(({ file, view, path }) => [file.id, view, path, file.parents, file.modifiedTime ?? null, file.md5Checksum ?? null, file.appProperties ?? {}])\n      .sort((a, b) => a[0].localeCompare(b[0])) });\n  const record = validatePiece({ pieceFolderId: piece.id, pieceName: piece.name, reviewRevision: revision, images, issues });\n  return { protocol: SELECTION_PROTOCOL, record, piece, outputsFolderId: outputs.id, runFolderId: run.id, candidatesFolderId: candidates.id,\n    rootChildren: children(piece.id), runChildren: children(run.id),\n    candidates: pool, rootFinalCopies: children(outputs.id).filter((file) => file.mimeType?.startsWith('image/')) };\n}\nfunction planSelection(request, snapshot) {\n  const body = parseSelectionRequest(request);\n  if (body.pieceFolderId !== snapshot.record.pieceFolderId || body.reviewRevision !== snapshot.record.reviewRevision) {\n    throw new Error('STALE_SELECTION: refresh and select from the current candidate pool.');\n  }\n  if (!selectionIsComplete(snapshot.record, body.selections)) throw new Error('Invalid candidate membership or view selection.');\n  const selected = new Set(Object.values(body.selections));\n  const extension = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/webp': '.webp' };\n  const approved = VIEWS.map((view) => {\n    const entry = snapshot.candidates.find((entry) => entry.view === view && entry.file.id === body.selections[view]);\n    if (!extension[entry.file.mimeType]) throw new Error('Unsupported product image type.');\n    return { fileId: entry.file.id, sourceParentId: entry.file.parents[0], view,\n      targetRelativePath: `04_PRODUCT_IMAGE_OUTPUTS/${STEMS[view]}${extension[entry.file.mimeType]}` };\n  });\n  const rejected = snapshot.candidates.filter((entry) => !selected.has(entry.file.id)).map((entry) => ({\n    fileId: entry.file.id, sourceParentId: entry.file.parents[0], view: entry.view, targetRelativePath: entry.path,\n  }));\n  return { protocol: SELECTION_PROTOCOL, jobId: hash(body), sourcePieceId: body.pieceFolderId,\n    reviewRevision: body.reviewRevision, stageIds: STAGES, approved, rejected,\n    // Preserve root-level final copies outside the designer's four-image root, without deleting them.\n    preservedRootCopies: snapshot.rootFinalCopies.map((file) => ({ fileId: file.id, sourceParentId: snapshot.outputsFolderId,\n      targetRelativePath: `04_PRODUCT_IMAGE_OUTPUTS/_run/final_copies/${file.name}` })),\n    referenceFoldersToPreserve: ['01_MATERIAL_CLOSEUPS_4K', '02_WHOLE_FRONT_BACK_SIDE', '03_SIZE_FIT_MODEL_MANNEQUIN'],\n    committed: false,\n  };\n}\nconst DRIVE_FOLDER = 'application/vnd.google-apps.folder';\nconst FOLDER_MIME = 'application/vnd.google-apps.folder';\nfunction newRoutingSession(body, snapshot, owner) {\n  const request = parseSelectionRequest(body), plan = planSelection(request, snapshot);\n  const folders = [], known = { piece: plan.sourcePieceId, outputs: snapshot.outputsFolderId, run: snapshot.runFolderId, rejectedStage: STAGES.rejected };\n  const references = plan.referenceFoldersToPreserve.map(name => {\n    const matches = snapshot.rootChildren.filter(file => file.name === name && file.mimeType === FOLDER_MIME);\n    if (matches.length !== 1) throw new Error(`Required reference folder is missing or ambiguous: ${name}`);\n    return { id: matches[0].id, name };\n  });\n  if (plan.rejected.length) {\n    folders.push({ key: 'rejectedPiece', name: snapshot.piece.name, parentKey: 'rejectedStage' });\n    for (const image of plan.rejected) {\n      const parts = image.targetRelativePath.split('/').slice(0, -1);\n      let parentKey = 'rejectedPiece';\n      for (let length = 1; length <= parts.length; length++) {\n        const key = `rejected:${parts.slice(0, length).join('/')}`;\n        if (!folders.some(folder => folder.key === key)) folders.push({ key, name: parts[length - 1], parentKey });\n        parentKey = key;\n      }\n    }\n  }\n  if (plan.preservedRootCopies.length) {\n    const existing = snapshot.runChildren.filter(file => file.name === 'final_copies' && file.mimeType === FOLDER_MIME);\n    if (existing.length > 1) throw new Error('Ambiguous final-copy archive.');\n    if (existing.length) known.finalCopies = existing[0].id;\n    else folders.push({ key: 'finalCopies', name: 'final_copies', parentKey: 'run' });\n  }\n  const originals = Object.fromEntries([...snapshot.candidates.map(entry => entry.file), ...snapshot.rootFinalCopies, snapshot.piece].map(file => [file.id, file]));\n  const job = { jobId: plan.jobId, request, plan, pieceName: snapshot.piece.name, references, originals,\n    folders, known, phase: folders.length ? 'allocate' : 'operate', step: 'inspect', index: 0, operations: [], confirmed: [] };\n  if (!folders.length) assembleOperations(job);\n  return { owner: String(owner), request, job, finished: false, status: 'running' };\n}\nfunction assembleOperations(job) {\n  const op = [];\n  for (const folder of job.folders) op.push({ kind: 'folder', id: job.known[folder.key], name: folder.name,\n    parent: job.known[folder.parentKey], mimeType: FOLDER_MIME });\n  const move = (image, parent, name) => ({ kind: 'move', id: image.fileId, source: image.sourceParentId,\n    parent, name, mimeType: job.originals[image.fileId].mimeType, checksum: job.originals[image.fileId].md5Checksum ?? null });\n  for (const image of job.plan.preservedRootCopies) op.push(move(image, job.known.finalCopies, job.originals[image.fileId].name));\n  for (const image of job.plan.rejected) op.push(move(image, job.known[`rejected:${image.targetRelativePath.split('/').slice(0, -1).join('/')}`], job.originals[image.fileId].name));\n  for (const image of job.plan.approved) op.push(move(image, job.known.outputs, image.targetRelativePath.split('/').at(-1)));\n  for (const reference of job.references) op.push({ kind: 'reference', id: reference.id, parent: job.plan.sourcePieceId, name: reference.name, mimeType: FOLDER_MIME });\n  op.push({ kind: 'reference', id: job.known.outputs, parent: job.plan.sourcePieceId, name: '04_PRODUCT_IMAGE_OUTPUTS', mimeType: FOLDER_MIME });\n  op.push({ kind: 'root', parent: job.known.outputs, ids: job.plan.approved.map(image => image.fileId) });\n  op.push({ kind: 'piece', id: job.plan.sourcePieceId, source: STAGES.queue, parent: STAGES.approved, name: job.pieceName, mimeType: FOLDER_MIME });\n  job.operations = op;\n}\nfunction matches(file, operation) {\n  return file?.id === operation.id && !file.trashed && file.name === operation.name && file.mimeType === operation.mimeType\n    && file.parents?.length === 1 && file.parents[0] === operation.parent && (!operation.checksum || file.md5Checksum === operation.checksum);\n}\n// AURA_NODE_BODY\nconst state=$input.first().json;\nif(state.mode==='queue') {if(state.error)return [{json:{queueResult:true,status:502,body:{protocol:SELECTION_PROTOCOL,error:state.error}}}];\nconst pieces=state.files.filter(file=>file.mimeType===DRIVE_FOLDER&&file.parents.includes(STAGES.queue));\nreturn [{json:{queueResult:true,status:200,body:{protocol:SELECTION_PROTOCOL,pieces:pieces.map(piece=>{try{return indexCandidatePool(piece,state.files).record;}catch(error){return {pieceFolderId:piece.id,pieceName:piece.name,reviewRevision:hash([piece.id,piece.modifiedTime||null]),images:[],issues:[error.message]};}})}}}];}\nconst context=$('Verify Routing Ownership').first().json;\ntry{if(state.error)throw new Error(state.error); const piece=state.files.find(file=>file.id===context.request.pieceFolderId&&file.parents.includes(STAGES.queue));\nif(!piece)throw new Error('STALE_SELECTION: piece no longer awaits review.');\nreturn [{json:{...newRoutingSession(context.request,indexCandidatePool(piece,state.files),context.owner),mutexId:context.mutexId,claimed:true}}];\n}catch(error){return [{json:{...context,finished:true,response:{status:error.message.startsWith('STALE_SELECTION')?409:400,body:{protocol:SELECTION_PROTOCOL,success:false,committed:false,error:error.message}}}}];}"
+      },
+      "id": "93d2d779-bfd7-4d44-bc31-04e0f8e3124c",
+      "name": "Build Queue or Validate Plan",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        816,
+        1472
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.body }}",
+        "options": {
+          "responseCode": "={{ $json.status }}"
+        }
+      },
+      "id": "c78a3b8b-e24b-423a-95cc-8406340057e9",
+      "name": "Return Creator Selection Draft Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        1104,
+        1472
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const { createHash } = require('crypto');\nconst VIEWS = ['front', 'back', 'three_quarter_front', 'detail_collage'];\nconst SELECTION_PROTOCOL = 'aura-creator-selection/v1';\nfunction jsonObject(value) {\n    if (!value || typeof value !== 'object' || Array.isArray(value))\n        throw new Error('Expected an object.');\n    return value;\n}\nfunction id(value) {\n    if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{1,256}$/.test(value))\n        throw new Error('Invalid file or piece ID.');\n    return value;\n}\nfunction revision(value) {\n    if (typeof value !== 'string' || !value.trim() || value.length > 2000 || /[\\x00-\\x1f]/.test(value)) {\n        throw new Error('Missing or invalid candidate revision. Refresh the queue.');\n    }\n    return value;\n}\nfunction parseSelectionRequest(value) {\n    const body = jsonObject(value);\n    if (body.protocol !== SELECTION_PROTOCOL)\n        throw new Error('The four-view selection format is required.');\n    const input = jsonObject(body.selections);\n    if (Object.keys(input).length !== VIEWS.length || Object.keys(input).some((key) => !VIEWS.includes(key))) {\n        throw new Error('Select exactly one image for each of the four views.');\n    }\n    const selections = Object.fromEntries(VIEWS.map((view) => [view, id(input[view])]));\n    if (new Set(Object.values(selections)).size !== VIEWS.length)\n        throw new Error('Each view needs a different image.');\n    return { protocol: SELECTION_PROTOCOL, pieceFolderId: id(body.pieceFolderId), reviewRevision: revision(body.reviewRevision), selections };\n}\n// AURA_NODE_BODY\ntry { const request = parseSelectionRequest($input.first().json.body); return [{json:{request,owner:String($execution.id),valid:true}}]; }\ncatch(error) {return [{json:{valid:false,response:{status:400,body:{protocol:SELECTION_PROTOCOL,success:false,committed:false,error:error.message}}}}];}"
+      },
+      "id": "123ee932-f504-444b-8abb-bbae29993e8c",
+      "name": "Parse Four-View Selection",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        336,
+        1760
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "if-Valid Four Views?",
+              "leftValue": "={{ $json.valid === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "03d4a66d-f501-4c23-a4bd-bcf06b4c032c",
+      "name": "Valid Four Views?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        560,
+        1760
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "0jVQUhHbb9ApVzSH",
+          "mode": "id"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "sourcePieceId",
+              "keyValue": "__creator_mutex__"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "id": "24d5ea81-a2ce-45f3-bfda-64a849f8d700",
+      "name": "Read Routing Mutex",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        784,
+        1696
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const { createHash } = require('crypto');\nconst SELECTION_PROTOCOL = 'aura-creator-selection/v1';\nfunction id(value) {\n    if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{1,256}$/.test(value))\n        throw new Error('Invalid file or piece ID.');\n    return value;\n}\nconst MUTEX_KEY = '__creator_mutex__';\n// AURA_NODE_BODY\nconst rows=$input.all().map(item=>item.json).filter(row=>row.sourcePieceId===MUTEX_KEY); const context=$('Parse Four-View Selection').first().json;\nreturn [{json:rows.length===1?{...context,mutexId:rows[0].id,ready:true}:{...context,ready:false,response:{status:503,body:{protocol:SELECTION_PROTOCOL,success:false,committed:false,error:'Routing state is missing or duplicated.'}}}}];"
+      },
+      "id": "a7db65c4-3e72-48e2-a73f-decde9dd28cd",
+      "name": "Prepare Routing Claim",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1008,
+        1696
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "if-Mutex Configured?",
+              "leftValue": "={{ $json.ready === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "9190c6e0-a546-4827-a740-9a1fa7d23a60",
+      "name": "Mutex Configured?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1216,
+        1696
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "value": "0jVQUhHbb9ApVzSH",
+          "mode": "id"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyValue": "={{ Number($json.mutexId) }}"
+            },
+            {
+              "keyName": "status",
+              "keyValue": "idle"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "busy",
+            "owner": "={{ $json.owner }}"
+          },
+          "schema": [
+            {
+              "id": "status",
+              "displayName": "status",
+              "type": "string",
+              "display": true,
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "owner",
+              "displayName": "owner",
+              "type": "string",
+              "display": true,
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e694eafe-fd14-472f-a418-fd73480ef1e7",
+      "name": "Atomically Claim Routing",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1440,
+        1616
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "0jVQUhHbb9ApVzSH",
+          "mode": "id"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyValue": "={{ Number($('Prepare Routing Claim').first().json.mutexId) }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "id": "836e3395-39d0-4486-bdb2-bdf99f4caa05",
+      "name": "Read Claimed Mutex",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        1664,
+        1616
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const { createHash } = require('crypto');\nconst SELECTION_PROTOCOL = 'aura-creator-selection/v1';\n// AURA_NODE_BODY\nconst context=$('Prepare Routing Claim').first().json; const rows=$input.all().map(item=>item.json); const owned=rows.length===1&&rows[0].status==='busy'&&rows[0].owner===context.owner;\nreturn [{json:{...context,claimed:owned,...(!owned?{response:{status:423,body:{protocol:SELECTION_PROTOCOL,success:false,committed:false,error:'Another Drive job is running. Wait for it to finish.'}}}:{})}}];"
+      },
+      "id": "47f25ce2-9525-4a7f-b271-ddda882b48e6",
+      "name": "Verify Routing Ownership",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1888,
+        1616
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "if-Routing Lock Owned?",
+              "leftValue": "={{ $json.claimed === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "ae7d853b-4120-40f7-a123-5613440047eb",
+      "name": "Routing Lock Owned?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2096,
+        1616
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "0jVQUhHbb9ApVzSH",
+          "mode": "id"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "sourcePieceId",
+              "keyValue": "={{ $json.request.pieceFolderId }}"
+            }
+          ]
+        },
+        "returnAll": true
+      },
+      "id": "cbc4853b-ca09-43c8-9771-5f989dd62c99",
+      "name": "Read Saved Selection",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        2304,
+        1520
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const { createHash } = require('crypto');\nconst VIEWS = ['front', 'back', 'three_quarter_front', 'detail_collage'];\nconst SELECTION_PROTOCOL = 'aura-creator-selection/v1';\nfunction jsonObject(value) {\n    if (!value || typeof value !== 'object' || Array.isArray(value))\n        throw new Error('Expected an object.');\n    return value;\n}\nfunction id(value) {\n    if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{1,256}$/.test(value))\n        throw new Error('Invalid file or piece ID.');\n    return value;\n}\nfunction revision(value) {\n    if (typeof value !== 'string' || !value.trim() || value.length > 2000 || /[\\x00-\\x1f]/.test(value)) {\n        throw new Error('Missing or invalid candidate revision. Refresh the queue.');\n    }\n    return value;\n}\nfunction parseSelectionRequest(value) {\n    const body = jsonObject(value);\n    if (body.protocol !== SELECTION_PROTOCOL)\n        throw new Error('The four-view selection format is required.');\n    const input = jsonObject(body.selections);\n    if (Object.keys(input).length !== VIEWS.length || Object.keys(input).some((key) => !VIEWS.includes(key))) {\n        throw new Error('Select exactly one image for each of the four views.');\n    }\n    const selections = Object.fromEntries(VIEWS.map((view) => [view, id(input[view])]));\n    if (new Set(Object.values(selections)).size !== VIEWS.length)\n        throw new Error('Each view needs a different image.');\n    return { protocol: SELECTION_PROTOCOL, pieceFolderId: id(body.pieceFolderId), reviewRevision: revision(body.reviewRevision), selections };\n}\nconst requestJobId = body => createHash('sha256').update(JSON.stringify(parseSelectionRequest(body))).digest('hex');\nfunction resumeRoutingSession(body, journal, owner) {\n  const request = parseSelectionRequest(body);\n  if (journal.jobId !== requestJobId(request) || journal.sourcePieceId !== request.pieceFolderId) throw new Error('A different selection is already recorded for this piece.');\n  const session = JSON.parse(journal.jobJson);\n  if (session.job.jobId !== journal.jobId || JSON.stringify(session.job.request) !== JSON.stringify(request)) throw new Error('Invalid routing journal.');\n  session.owner = String(owner);\n  if (journal.status === 'committed') return routingComplete(session);\n  session.finished = false; session.status = 'running'; delete session.response; delete session.error; delete session.command;\n  if (session.job.phase === 'operate') session.job.step = 'inspect';\n  return session;\n}\nfunction routingComplete(session) {\n  session.job.phase = 'committed'; session.finished = true; session.status = 'committed';\n  session.response = { status: 200, body: session.job.type === 'cleanup'\n    ? { protocol: 'aura-archive-cleanup/v1', success: true, committed: true, deletedArchiveIds: session.job.archiveIds, runId: session.job.runId }\n    : { protocol: SELECTION_PROTOCOL, success: true, committed: true, jobId: session.job.jobId,\n      approved: session.job.plan.approved.length, rejected: session.job.plan.rejected.length } };\n  return session;\n}\n// AURA_NODE_BODY\nconst context=$('Verify Routing Ownership').first().json; const rows=$input.all().map(item=>item.json).filter(row=>row.sourcePieceId===context.request.pieceFolderId);\ntry {if(rows.length>1)throw new Error('Duplicate routing journals.');\n if(!rows.length)return [{json:{...context,needsSnapshot:true}}];\n const session=resumeRoutingSession(context.request,rows[0],context.owner); return [{json:{...session,mutexId:context.mutexId,claimed:true,needsSnapshot:false}}];\n}catch(error){return [{json:{...context,needsSnapshot:false,finished:true,response:{status:409,body:{protocol:SELECTION_PROTOCOL,success:false,committed:false,error:error.message}}}}];}"
+      },
+      "id": "ab6c94fd-2859-4fbc-9793-5e7f2ecf313d",
+      "name": "Resume or Read Fresh Pool",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2528,
+        1520
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "if-Read Fresh Candidate Pool?",
+              "leftValue": "={{ $json.needsSnapshot === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c3300b48-82eb-44a8-8763-3b6b3b14e4e7",
+      "name": "Read Fresh Candidate Pool?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        2736,
+        1520
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const { createHash } = require('crypto');\nconst VIEWS = ['front', 'back', 'three_quarter_front', 'detail_collage'];\nconst SELECTION_PROTOCOL = 'aura-creator-selection/v1';\nfunction jsonObject(value) {\n    if (!value || typeof value !== 'object' || Array.isArray(value))\n        throw new Error('Expected an object.');\n    return value;\n}\nfunction id(value) {\n    if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{1,256}$/.test(value))\n        throw new Error('Invalid file or piece ID.');\n    return value;\n}\nfunction revision(value) {\n    if (typeof value !== 'string' || !value.trim() || value.length > 2000 || /[\\x00-\\x1f]/.test(value)) {\n        throw new Error('Missing or invalid candidate revision. Refresh the queue.');\n    }\n    return value;\n}\nfunction parseSelectionRequest(value) {\n    const body = jsonObject(value);\n    if (body.protocol !== SELECTION_PROTOCOL)\n        throw new Error('The four-view selection format is required.');\n    const input = jsonObject(body.selections);\n    if (Object.keys(input).length !== VIEWS.length || Object.keys(input).some((key) => !VIEWS.includes(key))) {\n        throw new Error('Select exactly one image for each of the four views.');\n    }\n    const selections = Object.fromEntries(VIEWS.map((view) => [view, id(input[view])]));\n    if (new Set(Object.values(selections)).size !== VIEWS.length)\n        throw new Error('Each view needs a different image.');\n    return { protocol: SELECTION_PROTOCOL, pieceFolderId: id(body.pieceFolderId), reviewRevision: revision(body.reviewRevision), selections };\n}\nconst STAGES = Object.freeze({\n  queue: '1O-kkEwshBXZ8AYVzPf6N7h0njySVri1V',\n  approved: '1LQzu9HFblegSGbDCurmeYZ1OrNJwJp0c',\n  rejected: '1d2vIe5wh3ysjuvK0Q4tz0qZ16-HMl1DL',\n});\nfunction startTraversal(mode, request) {\n  if (!['queue', 'plan', 'cleanup'].includes(mode)) throw new Error('Unknown traversal mode.');\n  let selection;\n  if (mode === 'plan') {\n    try { selection = parseSelectionRequest(request); }\n    catch (error) { return { mode, done: true, status: 400, error: error.message }; }\n  }\n  if (mode === 'cleanup') {\n    if (!request || !/^[A-Za-z0-9_-]{1,256}$/.test(request.pieceFolderId)) return {mode,done:true,status:400,error:'Invalid cleanup piece.'};\n    selection = {pieceFolderId:request.pieceFolderId};\n  }\n  return { mode, selection, todo: [{ id: STAGES.queue, kind: 'queue', depth: 0 }], current: null,\n    files: [], seenFolders: [STAGES.queue], pageTokens: [], pageToken: '', requestCount: 0, done: false };\n}\n// AURA_NODE_BODY\nconst context=$input.first().json; return [{json:startTraversal('plan',context.request)}];"
+      },
+      "id": "fc1793e5-45e5-466c-8219-22ae713a15ab",
+      "name": "Start Locked Candidate Read",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2736,
+        1280
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "if-Queue Response?",
+              "leftValue": "={{ $json.queueResult === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "163d49a6-719c-496f-8bbf-d001b5e4b016",
+      "name": "Queue Response?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1056,
+        1472
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const { createHash } = require('crypto');\nconst clone = value => JSON.parse(JSON.stringify(value));\nfunction routingJournal(session) {\n  const compact = clone(session);\n  for (const key of ['command','journal','hasJob','needsSnapshot']) delete compact[key];\n  return { sourcePieceId: session.job.journalKey ?? session.job.plan.sourcePieceId, status: session.status, owner: session.owner,\n    jobId: session.job.jobId, jobJson: JSON.stringify(compact) };\n}\n// AURA_NODE_BODY\nconst session=$input.first().json; return [{json:{...session,hasJob:Boolean(session.job),...(session.job?{journal:routingJournal(session)}:{})}}];"
+      },
+      "id": "f064e063-689e-402d-86ec-457cd4226b98",
+      "name": "Checkpoint Routing Session",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2960,
+        1520
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "if-Has Routing Journal?",
+              "leftValue": "={{ $json.hasJob === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "540fa809-38e9-417e-b5c7-f99e108df657",
+      "name": "Has Routing Journal?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3184,
+        1520
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "value": "0jVQUhHbb9ApVzSH",
+          "mode": "id"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "sourcePieceId",
+              "keyValue": "={{ $json.journal.sourcePieceId }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "sourcePieceId": "={{ $json.journal.sourcePieceId }}",
+            "status": "={{ $json.journal.status }}",
+            "owner": "={{ $json.journal.owner }}",
+            "jobId": "={{ $json.journal.jobId }}",
+            "jobJson": "={{ $json.journal.jobJson }}"
+          },
+          "schema": [
+            {
+              "id": "sourcePieceId",
+              "displayName": "sourcePieceId",
+              "type": "string",
+              "display": true,
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "type": "string",
+              "display": true,
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "owner",
+              "displayName": "owner",
+              "type": "string",
+              "display": true,
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "jobId",
+              "displayName": "jobId",
+              "type": "string",
+              "display": true,
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "jobJson",
+              "displayName": "jobJson",
+              "type": "string",
+              "display": true,
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "d05b1efe-355c-4ad1-a0ad-3a96e287bf78",
+      "name": "Save Routing Progress",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        3408,
+        1392
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const { createHash } = require('crypto');\n\n// AURA_NODE_BODY\nconst session=$('Checkpoint Routing Session').first(0,$runIndex).json; const rows=$input.all().map(item=>item.json);\nif(rows.length!==1||rows[0].jobId!==session.job.jobId||rows[0].jobJson!==session.journal.jobJson)throw new Error('Routing checkpoint was not durably saved. Lock remains held for recovery.');\nreturn [{json:session}];"
+      },
+      "id": "21ed936b-9868-48c7-bc34-0764394070f6",
+      "name": "Restore Saved Session",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3616,
+        1392
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "if-Routing Finished?",
+              "leftValue": "={{ $json.finished === true }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "2d31831e-9d21-4e80-9891-14a1c903dd2d",
+      "name": "Routing Finished?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        3840,
+        1392
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const { createHash } = require('crypto');\nconst SELECTION_PROTOCOL = 'aura-creator-selection/v1';\nfunction id(value) {\n    if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{1,256}$/.test(value))\n        throw new Error('Invalid file or piece ID.');\n    return value;\n}\nconst DRIVE = 'https://www.googleapis.com/drive/v3';\nconst META = 'id,name,mimeType,parents,trashed,md5Checksum,appProperties';\nconst FOLDER_MIME = 'application/vnd.google-apps.folder';\nconst clone = value => JSON.parse(JSON.stringify(value));\nfunction nextRoutingCommand(input) {\n  const session = clone(input), job = session.job;\n  if (session.finished) return session;\n  if (job.phase === 'allocate') {\n    session.command = { method: 'GET', url: `${DRIVE}/files/generateIds`, query: { count: job.folders.length, space: 'drive', type: 'files' } };\n    return session;\n  }\n  const operation = job.operations[job.index];\n  if (!operation) return routingComplete(session);\n  if (operation.kind === 'root') {\n    session.command = { method: 'GET', url: `${DRIVE}/files`, query: { q: `'${operation.parent}' in parents and trashed = false and mimeType contains 'image/'`,\n      fields: `nextPageToken,incompleteSearch,files(${META})`, pageSize: 1000, supportsAllDrives: true, includeItemsFromAllDrives: true } };\n    return session;\n  }\n  if (job.step !== 'apply') {\n    session.command = { method: 'GET', url: `${DRIVE}/files/${operation.id}`, query: { fields: META, supportsAllDrives: true } };\n  } else if (operation.kind === 'folder') {\n    session.command = { method: 'POST', url: `${DRIVE}/files`, query: { fields: META, supportsAllDrives: true },\n      body: { id: operation.id, name: operation.name, mimeType: FOLDER_MIME, parents: [operation.parent],\n        appProperties: { auraSourcePieceId: job.plan.sourcePieceId, auraSelectionJobId: job.jobId } } };\n  } else if (operation.kind === 'delete_archive') {\n    session.command = { method: 'DELETE', url: `${DRIVE}/files/${operation.id}`, query: { supportsAllDrives: true } };\n  } else {\n    session.command = { method: 'PATCH', url: `${DRIVE}/files/${operation.id}`,\n      query: { addParents: operation.parent, removeParents: operation.source, fields: META, supportsAllDrives: true },\n      body: { name: operation.name, ...(operation.kind === 'piece' ? { appProperties: {\n        ...(job.originals[operation.id].appProperties ?? {}), auraSourcePieceId: job.plan.sourcePieceId,\n        auraSelectionJobId: job.jobId, auraCreatorReviewState: 'complete' } } : {}) } };\n  }\n  return session;\n}\nfunction routingComplete(session) {\n  session.job.phase = 'committed'; session.finished = true; session.status = 'committed';\n  session.response = { status: 200, body: session.job.type === 'cleanup'\n    ? { protocol: 'aura-archive-cleanup/v1', success: true, committed: true, deletedArchiveIds: session.job.archiveIds, runId: session.job.runId }\n    : { protocol: SELECTION_PROTOCOL, success: true, committed: true, jobId: session.job.jobId,\n      approved: session.job.plan.approved.length, rejected: session.job.plan.rejected.length } };\n  return session;\n}\nfunction routingFailure(input, error) {\n  const session = clone(input); session.finished = true; session.status = 'failed'; session.error = String(error);\n  session.response = { status: 502, body: { protocol: session.job.type === 'cleanup' ? 'aura-archive-cleanup/v1' : SELECTION_PROTOCOL, success: false, committed: false,\n    error: 'Drive job stopped safely and its progress was saved.', jobId: session.job.jobId } };\n  return session;\n}\n// AURA_NODE_BODY\nconst session=$input.first().json; try{return [{json:nextRoutingCommand(session)}];}catch(error){return [{json:routingFailure(session,error.message)}];}"
+      },
+      "id": "7b9b268d-6c41-4543-976a-6fa6580856f8",
+      "name": "Prepare Routing Command",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4064,
+        1264
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "if-Has Drive Command?",
+              "leftValue": "={{ !$json.finished && Boolean($json.command) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5ea0e117-49fc-4c48-bc80-c6b6c9765e7d",
+      "name": "Has Drive Command?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        4288,
+        1264
+      ]
+    },
+    {
+      "parameters": {
+        "method": "={{ $json.command.method }}",
+        "url": "={{ $json.command.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "specifyQuery": "json",
+        "jsonQuery": "={{ JSON.stringify($json.command.query || {}) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "d21f0a14-fa4c-4ec5-a414-b47a56f5f615",
+      "name": "Execute Verified Drive Step",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4496,
+        1168
+      ],
+      "retryOnFail": false,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "DxuMVynJiqHaTJ6T",
+          "name": "Aura Google Drive"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const { createHash } = require('crypto');\nconst SELECTION_PROTOCOL = 'aura-creator-selection/v1';\nfunction id(value) {\n    if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{1,256}$/.test(value))\n        throw new Error('Invalid file or piece ID.');\n    return value;\n}\nconst STAGES = Object.freeze({\n  queue: '1O-kkEwshBXZ8AYVzPf6N7h0njySVri1V',\n  approved: '1LQzu9HFblegSGbDCurmeYZ1OrNJwJp0c',\n  rejected: '1d2vIe5wh3ysjuvK0Q4tz0qZ16-HMl1DL',\n});\nconst FOLDER_MIME = 'application/vnd.google-apps.folder';\nconst clone = value => JSON.parse(JSON.stringify(value));\nfunction assembleOperations(job) {\n  const op = [];\n  for (const folder of job.folders) op.push({ kind: 'folder', id: job.known[folder.key], name: folder.name,\n    parent: job.known[folder.parentKey], mimeType: FOLDER_MIME });\n  const move = (image, parent, name) => ({ kind: 'move', id: image.fileId, source: image.sourceParentId,\n    parent, name, mimeType: job.originals[image.fileId].mimeType, checksum: job.originals[image.fileId].md5Checksum ?? null });\n  for (const image of job.plan.preservedRootCopies) op.push(move(image, job.known.finalCopies, job.originals[image.fileId].name));\n  for (const image of job.plan.rejected) op.push(move(image, job.known[`rejected:${image.targetRelativePath.split('/').slice(0, -1).join('/')}`], job.originals[image.fileId].name));\n  for (const image of job.plan.approved) op.push(move(image, job.known.outputs, image.targetRelativePath.split('/').at(-1)));\n  for (const reference of job.references) op.push({ kind: 'reference', id: reference.id, parent: job.plan.sourcePieceId, name: reference.name, mimeType: FOLDER_MIME });\n  op.push({ kind: 'reference', id: job.known.outputs, parent: job.plan.sourcePieceId, name: '04_PRODUCT_IMAGE_OUTPUTS', mimeType: FOLDER_MIME });\n  op.push({ kind: 'root', parent: job.known.outputs, ids: job.plan.approved.map(image => image.fileId) });\n  op.push({ kind: 'piece', id: job.plan.sourcePieceId, source: STAGES.queue, parent: STAGES.approved, name: job.pieceName, mimeType: FOLDER_MIME });\n  job.operations = op;\n}\nfunction matches(file, operation) {\n  return file?.id === operation.id && !file.trashed && file.name === operation.name && file.mimeType === operation.mimeType\n    && file.parents?.length === 1 && file.parents[0] === operation.parent && (!operation.checksum || file.md5Checksum === operation.checksum);\n}\nfunction operationDone(session) {\n  const job = session.job, operation = job.operations[job.index];\n  job.confirmed.push({ index: job.index, id: operation.id ?? operation.parent, kind: operation.kind });\n  job.index += 1; job.step = 'inspect';\n  if (job.index === job.operations.length) return routingComplete(session);\n  return session;\n}\nfunction routingComplete(session) {\n  session.job.phase = 'committed'; session.finished = true; session.status = 'committed';\n  session.response = { status: 200, body: session.job.type === 'cleanup'\n    ? { protocol: 'aura-archive-cleanup/v1', success: true, committed: true, deletedArchiveIds: session.job.archiveIds, runId: session.job.runId }\n    : { protocol: SELECTION_PROTOCOL, success: true, committed: true, jobId: session.job.jobId,\n      approved: session.job.plan.approved.length, rejected: session.job.plan.rejected.length } };\n  return session;\n}\nfunction routingFailure(input, error) {\n  const session = clone(input); session.finished = true; session.status = 'failed'; session.error = String(error);\n  session.response = { status: 502, body: { protocol: session.job.type === 'cleanup' ? 'aura-archive-cleanup/v1' : SELECTION_PROTOCOL, success: false, committed: false,\n    error: 'Drive job stopped safely and its progress was saved.', jobId: session.job.jobId } };\n  return session;\n}\nfunction acceptRoutingResponse(input, response) {\n  const session = clone(input), job = session.job;\n  try {\n    const status = Number(response.statusCode), data = response.body;\n    if (!Number.isInteger(status)) throw new Error('Drive response was not received.');\n    if (job.phase === 'allocate') {\n      if (status !== 200 || !Array.isArray(data?.ids) || data.ids.length !== job.folders.length\n        || new Set(data.ids).size !== data.ids.length || data.ids.some(id => !/^[A-Za-z0-9_-]+$/.test(id))) throw new Error('Unable to reserve stable destination IDs.');\n      job.folders.forEach((folder, index) => { job.known[folder.key] = data.ids[index]; });\n      assembleOperations(job); job.phase = 'operate'; return session;\n    }\n    const operation = job.operations[job.index];\n    job.attempts ??= {};\n    job.attempts[job.index] = (job.attempts[job.index] ?? 0) + 1;\n    if (job.attempts[job.index] > 12) throw new Error('Drive operation retry budget exceeded.');\n    if (operation.kind === 'root') {\n      if (status !== 200 || !Array.isArray(data?.files) || data.nextPageToken || data.incompleteSearch || data.files.length !== 4\n        || new Set(data.files.map(file => file.id)).size !== 4 || data.files.some(file => !operation.ids.includes(file.id))) throw new Error('Designer root is not exactly the selected four images.');\n      for (const approved of job.plan.approved) {\n        const expected = job.operations.find(op => op.id === approved.fileId);\n        if (!matches(data.files.find(file => file.id === approved.fileId), expected)) throw new Error('Selected image verification failed.');\n      }\n      return operationDone(session);\n    }\n    if (job.step === 'apply') {\n      if (status < 200 || status >= 300) throw new Error('Drive write was not confirmed.');\n      job.step = 'verify'; return session;\n    }\n    if (operation.kind === 'delete_archive' && status === 404) {\n      if (!job.confirmed.some(check => check.kind === 'archive_check' && check.id === operation.id)) throw new Error('Archive was not preflight-verified.');\n      return operationDone(session);\n    }\n    if (status === 200 && matches(data, operation)) {\n      if (operation.kind === 'delete_archive') { job.step = 'apply'; return session; }\n      if (operation.kind === 'folder' && (data.appProperties?.auraSourcePieceId !== job.plan.sourcePieceId || data.appProperties?.auraSelectionJobId !== job.jobId)) throw new Error('Reserved destination provenance does not match.');\n      return operationDone(session);\n    }\n    if (job.step === 'verify' || operation.kind === 'reference') throw new Error('Post-move verification failed.');\n    if (operation.kind === 'folder' && status === 404) { job.step = 'apply'; return session; }\n    if (['move','piece'].includes(operation.kind) && status === 200 && data.id === operation.id && !data.trashed\n      && data.parents?.length === 1 && data.parents[0] === operation.source && data.mimeType === operation.mimeType\n      && (!operation.checksum || data.md5Checksum === operation.checksum)) { job.step = 'apply'; return session; }\n    throw new Error('A source file changed or is outside the expected folder.');\n  } catch (error) { return routingFailure(session, error.message); }\n}\n// AURA_NODE_BODY\nconst session=$('Prepare Routing Command').first(0,$runIndex).json; const next=acceptRoutingResponse(session,$input.first().json); return [{json:{...next,mutexId:session.mutexId,claimed:true}}];"
+      },
+      "id": "1fcf18fe-59a0-41f2-ab41-ef7968f3312a",
+      "name": "Verify and Record Drive Step",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4720,
+        1168
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const { createHash } = require('crypto');\nconst SELECTION_PROTOCOL = 'aura-creator-selection/v1';\n// AURA_NODE_BODY\nconst session=$input.first().json; return [{json:{mutexId:session.mutexId,owner:session.owner,response:session.response||{status:502,body:{protocol:SELECTION_PROTOCOL,success:false,committed:false,error:'Routing result is unconfirmed.'}}}}];"
+      },
+      "id": "aa02ad1e-a446-4abc-a250-9f523c165b1d",
+      "name": "Prepare Final Routing Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3408,
+        1760
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "dataTableId": {
+          "__rl": true,
+          "value": "0jVQUhHbb9ApVzSH",
+          "mode": "id"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyValue": "={{ Number($json.mutexId) }}"
+            },
+            {
+              "keyName": "owner",
+              "keyValue": "={{ $json.owner }}"
+            },
+            {
+              "keyName": "status",
+              "keyValue": "busy"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "status": "idle",
+            "owner": "none"
+          },
+          "schema": [
+            {
+              "id": "status",
+              "displayName": "status",
+              "type": "string",
+              "display": true,
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "owner",
+              "displayName": "owner",
+              "type": "string",
+              "display": true,
+              "required": false,
+              "defaultMatch": false,
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "b72316d1-be56-4490-99d2-dde4f1a24e9c",
+      "name": "Release Owned Routing Mutex",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        3616,
+        1760
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const { createHash } = require('crypto');\nconst SELECTION_PROTOCOL = 'aura-creator-selection/v1';\nfunction id(value) {\n    if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{1,256}$/.test(value))\n        throw new Error('Invalid file or piece ID.');\n    return value;\n}\n// AURA_NODE_BODY\nconst context=$('Prepare Final Routing Response').first().json; const rows=$input.all().map(item=>item.json);\nreturn [{json:rows.length===1&&rows[0].status==='idle'&&rows[0].id===context.mutexId?context:{response:{status:502,body:{protocol:SELECTION_PROTOCOL,success:false,committed:false,error:'Job recorded; routing lock release needs attention.'}}}}];"
+      },
+      "id": "e240085b-2cc2-436d-b6ac-eca7f0e8e4d1",
+      "name": "Check Routing Release",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3840,
+        1760
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json.response.body }}",
+        "options": {
+          "responseCode": "={{ $json.response.status }}"
+        }
+      },
+      "id": "809f00da-656d-474d-9505-f8a31a9b798b",
+      "name": "Return Image Routing Result",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        4288,
+        1792
+      ]
+    },
+    {
+      "parameters": {
+        "content": "# Creator image routing\nKeep unpublished until the user requests testing. Four selected candidates become the designer root; other candidates move to a separate rejected piece archive. References follow the original piece, which moves last. Root final copies are preserved under _run/final_copies. A conditional data-table mutex serializes writes and durable journals resume the SAME selection. Hard interruption leaves the lock held: terminate/check the original execution before resetting it. ZIP cleanup is a separate post-generator/reviewer workflow.",
+        "height": 300,
+        "width": 1100
+      },
+      "id": "f12a9202-0fe0-459f-916f-53034a03121d",
+      "name": "Image Routing — Unpublished",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1696,
+        1920
+      ]
+    },
+    {
+      "parameters": {
+        "method": "={{ $json.command.method }}",
+        "url": "={{ $json.command.url }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "specifyQuery": "json",
+        "jsonQuery": "={{ JSON.stringify($json.command.query || {}) }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json.command.body) }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "91a8182e-277e-4b9c-8756-c28ad865d7c5",
+      "name": "Execute Verified Drive Step With Body",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4496,
+        976
+      ],
+      "retryOnFail": false,
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "DxuMVynJiqHaTJ6T",
+          "name": "Aura Google Drive"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "leftValue": "={{ $json.command.body !== undefined && $json.command.body !== null && ![\"GET\",\"HEAD\"].includes(String($json.command.method).toUpperCase()) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "9658ac37-1c4d-46c6-9c6c-d0ac508633c1",
+      "name": "Execute Verified Drive Step Has Body?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        4288,
+        1168
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Get Creator Candidates — DRAFT": {
+      "main": [
+        [
+          {
+            "node": "Start Candidate Queue Read",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start Candidate Queue Read": {
+      "main": [
+        [
+          {
+            "node": "More Folder Pages?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "More Folder Pages?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Folder Page",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Queue or Validate Plan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Folder Page": {
+      "main": [
+        [
+          {
+            "node": "Read Drive Children — GET only",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Drive Children — GET only": {
+      "main": [
+        [
+          {
+            "node": "Collect Page and Queue Descendants",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Page and Queue Descendants": {
+      "main": [
+        [
+          {
+            "node": "More Folder Pages?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Queue or Validate Plan": {
+      "main": [
+        [
+          {
+            "node": "Queue Response?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Submit Four Creator Views": {
+      "main": [
+        [
+          {
+            "node": "Parse Four-View Selection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Four-View Selection": {
+      "main": [
+        [
+          {
+            "node": "Valid Four Views?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid Four Views?": {
+      "main": [
+        [
+          {
+            "node": "Read Routing Mutex",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return Image Routing Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Routing Mutex": {
+      "main": [
+        [
+          {
+            "node": "Prepare Routing Claim",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Routing Claim": {
+      "main": [
+        [
+          {
+            "node": "Mutex Configured?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mutex Configured?": {
+      "main": [
+        [
+          {
+            "node": "Atomically Claim Routing",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return Image Routing Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Atomically Claim Routing": {
+      "main": [
+        [
+          {
+            "node": "Read Claimed Mutex",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Claimed Mutex": {
+      "main": [
+        [
+          {
+            "node": "Verify Routing Ownership",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Routing Ownership": {
+      "main": [
+        [
+          {
+            "node": "Routing Lock Owned?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Routing Lock Owned?": {
+      "main": [
+        [
+          {
+            "node": "Read Saved Selection",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Return Image Routing Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Saved Selection": {
+      "main": [
+        [
+          {
+            "node": "Resume or Read Fresh Pool",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resume or Read Fresh Pool": {
+      "main": [
+        [
+          {
+            "node": "Read Fresh Candidate Pool?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Fresh Candidate Pool?": {
+      "main": [
+        [
+          {
+            "node": "Start Locked Candidate Read",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Checkpoint Routing Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Start Locked Candidate Read": {
+      "main": [
+        [
+          {
+            "node": "More Folder Pages?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Queue Response?": {
+      "main": [
+        [
+          {
+            "node": "Return Creator Selection Draft Result",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Checkpoint Routing Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Checkpoint Routing Session": {
+      "main": [
+        [
+          {
+            "node": "Has Routing Journal?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Routing Journal?": {
+      "main": [
+        [
+          {
+            "node": "Save Routing Progress",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Final Routing Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Routing Progress": {
+      "main": [
+        [
+          {
+            "node": "Restore Saved Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Restore Saved Session": {
+      "main": [
+        [
+          {
+            "node": "Routing Finished?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Routing Finished?": {
+      "main": [
+        [
+          {
+            "node": "Prepare Final Routing Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Prepare Routing Command",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Routing Command": {
+      "main": [
+        [
+          {
+            "node": "Has Drive Command?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Drive Command?": {
+      "main": [
+        [
+          {
+            "node": "Execute Verified Drive Step Has Body?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Checkpoint Routing Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Verified Drive Step": {
+      "main": [
+        [
+          {
+            "node": "Verify and Record Drive Step",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify and Record Drive Step": {
+      "main": [
+        [
+          {
+            "node": "Checkpoint Routing Session",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Final Routing Response": {
+      "main": [
+        [
+          {
+            "node": "Release Owned Routing Mutex",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Release Owned Routing Mutex": {
+      "main": [
+        [
+          {
+            "node": "Check Routing Release",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Routing Release": {
+      "main": [
+        [
+          {
+            "node": "Return Image Routing Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Verified Drive Step With Body": {
+      "main": [
+        [
+          {
+            "node": "Verify and Record Drive Step",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Execute Verified Drive Step Has Body?": {
+      "main": [
+        [
+          {
+            "node": "Execute Verified Drive Step With Body",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Execute Verified Drive Step",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "6e6a27a9-2581-4228-b093-fa35b6212577",
+  "meta": {
+    "instanceId": "e63fdda36db6f938b08488f118363a6fd2a9c05de12c43fd9bb6c2525afd24c8"
+  },
+  "nodeGroups": [],
+  "id": "hxCyYxr5to7S1Glv",
+  "tags": []
+}
